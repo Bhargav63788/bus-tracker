@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h2>📡 Conductor Live Location</h2>
+<button onclick="startTracking()">Start Sharing Location</button>
+
+<script>
+function startTracking(){
+
+  alert("Started tracking");
+
+  if(navigator.geolocation){
+
+    navigator.geolocation.watchPosition(async (position)=>{
+
+      let lat = position.coords.latitude;
+      let lng = position.coords.longitude;
+
+      alert("GPS: " + lat + ", " + lng);
+
+      try {
+        let res = await fetch("https://bus-tracker-6cmi.onrender.com/update-location", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ lat: lat, lng: lng })
+        });
+
+        let txt = await res.text();
+        alert("Server: " + txt);
+
+      } catch (e) {
+        alert("Error: " + e.message);
+      }
+
+    }, (err)=>{
+      alert("GPS Error: " + err.message);
+    });
+
+  } else {
+    alert("GPS not supported");
+  }
+}
+</script>
+
+</body>
+</html>
