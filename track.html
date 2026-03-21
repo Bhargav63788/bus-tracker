@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<title>Bus Tracker</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+#map {
+  height: 500px;
+}
+</style>
+
+</head>
+
+<body>
+
+<h2>🗺️ Live Bus Tracking</h2>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+
+var map = L.map('map').setView([0, 0], 2);
+
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+var marker;
+let route = [];
+let polyline = L.polyline(route, {color: 'blue'}).addTo(map);
+
+// get location from server every 2 sec
+setInterval(async ()=>{
+
+  try {
+
+    const res = await fetch("https://bus-tracker-6cmi.onrender.com/get-location")
+    const data = await res.json();
+
+    // ignore empty data
+    if (data.lat === 0 && data.lng === 0) return;
+
+    let newPoint = [data.lat, data.lng];
+
+    // create or update marker
+    if (!marker) {
+      marker = L.marker(newPoint).addTo(map).bindPopup("Bus");
+    } else {
+      marker.setLatLng(newPoint);
+    }
+
+    map.setView(newPoint, 15);
+
+    route.push(newPoint);
+    polyline.setLatLngs(route);
+
+  } catch (err){
+    console.log("Error:", err);
+  }
+
+},2000);
+
+</script>
+
+</body>
+</html>
