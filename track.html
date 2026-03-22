@@ -27,6 +27,10 @@ var map = L.map('map').setView([0, 0], 2);
 
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
+var busIcon = L.icon({
+  iconUrl: 'bus.png',
+  iconSize: [40, 40],
+});
 var marker;
 let route = [];
 let polyline = L.polyline(route, {color: 'blue'}).addTo(map);
@@ -46,7 +50,7 @@ setInterval(async ()=>{
 
     // create or update marker
     if (!marker) {
-      marker = L.marker(newPoint).addTo(map).bindPopup("Bus");
+      marker = L.marker(newPoint, { icon: busIcon }).addTo(map).bindPopup("Bus");
     } else {
       marker.setLatLng(newPoint);
     }
