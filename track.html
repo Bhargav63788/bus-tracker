@@ -22,7 +22,6 @@
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-
 var map = L.map('map').setView([0, 0], 2);
 
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -31,9 +30,34 @@ var busIcon = L.icon({
   iconUrl: 'bus.png',
   iconSize: [40, 40],
 });
+
 var marker;
 let route = [];
 let polyline = L.polyline(route, {color: 'blue'}).addTo(map);
+
+// ✅ ADD THIS FUNCTION
+function smoothMove(marker, newLatLng) {
+  let current = marker.getLatLng();
+
+  let steps = 20;
+  let i = 0;
+
+  let deltaLat = (newLatLng[0] - current.lat) / steps;
+  let deltaLng = (newLatLng[1] - current.lng) / steps;
+
+  let interval = setInterval(() => {
+    if (i >= steps) {
+      clearInterval(interval);
+      return;
+    }
+
+    current.lat += deltaLat;
+    current.lng += deltaLng;
+
+    marker.setLatLng([current.lat, current.lng]);
+    i++;
+  }, 50);
+}
 
 // get location from server every 2 sec
 setInterval(async ()=>{
@@ -43,16 +67,16 @@ setInterval(async ()=>{
     const res = await fetch("https://bus-tracker-6cmi.onrender.com/get-location")
     const data = await res.json();
 
-    // ignore empty data
     if (data.lat === 0 && data.lng === 0) return;
 
     let newPoint = [data.lat, data.lng];
 
-    // create or update marker
     if (!marker) {
       marker = L.marker(newPoint, { icon: busIcon }).addTo(map).bindPopup("Bus");
     } else {
-      marker.setLatLng(newPoint);
+      // ❌ OLD: marker.setLatLng(newPoint);
+      // ✅ NEW:
+      smoothMove(marker, newPoint);
     }
 
     map.setView(newPoint, 15);
