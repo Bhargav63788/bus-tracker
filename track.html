@@ -17,6 +17,10 @@
 <body>
 
 <h2>🗺️ Live Bus Tracking</h2>
+
+<!-- ✅ ETA TEXT -->
+<p id="eta">ETA: calculating...</p>
+
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -37,6 +41,9 @@ var busIcon = L.icon({
 var marker;
 let route = [];
 let polyline = L.polyline(route, {color: 'blue'}).addTo(map);
+
+// ✅ DESTINATION (change this later)
+let destination = [12.9716, 77.5946];
 
 // ✅ Smooth movement
 function smoothMove(marker, newLatLng) {
@@ -62,7 +69,7 @@ function smoothMove(marker, newLatLng) {
   }, 50);
 }
 
-// ✅ Distance filter function (NEW)
+// ✅ Distance function
 function getDistance(p1, p2) {
   let R = 6371;
 
@@ -76,10 +83,10 @@ function getDistance(p1, p2) {
 
   let c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 
-  return R * c * 1000; // meters
+  return R * c * 1000;
 }
 
-// get location from server every 2 sec
+// get location from server every 1 sec
 setInterval(async ()=>{
 
   try {
@@ -91,7 +98,7 @@ setInterval(async ()=>{
 
     let newPoint = [data.lat, data.lng];
 
-    // ✅ FILTER BAD GPS JUMPS
+    // ✅ FILTER GPS JUMPS
     if (marker) {
       let current = marker.getLatLng();
       let dist = getDistance([current.lat, current.lng], newPoint);
@@ -111,7 +118,26 @@ setInterval(async ()=>{
     map.setView(newPoint, 15);
 
     route.push(newPoint);
-   polyline.addLatLng(newPoint);
+    polyline.addLatLng(newPoint);
+
+    // ✅ ETA CALCULATION (REAL ONE)
+    if (marker) {
+      let current = marker.getLatLng();
+
+      let dist = getDistance(
+        [current.lat, current.lng],
+        destination
+      );
+
+      let speed = 10; // m/s (adjust later)
+
+      let eta = dist / speed;
+
+      let minutes = (eta / 60).toFixed(1);
+
+      document.getElementById("eta").innerText =
+        "ETA to destination: " + minutes + " min";
+    }
 
   } catch (err){
     console.log("Error:", err);
