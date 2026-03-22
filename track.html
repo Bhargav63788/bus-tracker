@@ -24,7 +24,10 @@
 <script>
 var map = L.map('map').setView([0, 0], 2);
 
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+  maxZoom: 20,
+  subdomains: ['mt0','mt1','mt2','mt3']
+}).addTo(map);
 
 var busIcon = L.icon({
   iconUrl: 'bus.png',
