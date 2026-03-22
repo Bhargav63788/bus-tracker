@@ -111,13 +111,13 @@ setInterval(async ()=>{
     map.setView(newPoint, 15);
 
     route.push(newPoint);
-    polyline.setLatLngs(route);
+   polyline.addLatLng(newPoint);
 
   } catch (err){
     console.log("Error:", err);
   }
 
-},2000);
+},1000);
 
 </script>
 
