@@ -35,7 +35,7 @@ var marker;
 let route = [];
 let polyline = L.polyline(route, {color: 'blue'}).addTo(map);
 
-// ✅ ADD THIS FUNCTION
+// ✅ Smooth movement
 function smoothMove(marker, newLatLng) {
   let current = marker.getLatLng();
 
@@ -59,6 +59,23 @@ function smoothMove(marker, newLatLng) {
   }, 50);
 }
 
+// ✅ Distance filter function (NEW)
+function getDistance(p1, p2) {
+  let R = 6371;
+
+  let dLat = (p2[0] - p1[0]) * Math.PI / 180;
+  let dLng = (p2[1] - p1[1]) * Math.PI / 180;
+
+  let a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(p1[0]*Math.PI/180) * Math.cos(p2[0]*Math.PI/180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2);
+
+  let c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+  return R * c * 1000; // meters
+}
+
 // get location from server every 2 sec
 setInterval(async ()=>{
 
@@ -71,11 +88,20 @@ setInterval(async ()=>{
 
     let newPoint = [data.lat, data.lng];
 
+    // ✅ FILTER BAD GPS JUMPS
+    if (marker) {
+      let current = marker.getLatLng();
+      let dist = getDistance([current.lat, current.lng], newPoint);
+
+      if (dist > 50) {
+        console.log("Ignored jump:", dist);
+        return;
+      }
+    }
+
     if (!marker) {
       marker = L.marker(newPoint, { icon: busIcon }).addTo(map).bindPopup("Bus");
     } else {
-      // ❌ OLD: marker.setLatLng(newPoint);
-      // ✅ NEW:
       smoothMove(marker, newPoint);
     }
 
