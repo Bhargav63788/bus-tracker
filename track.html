@@ -18,7 +18,6 @@
 
 <h2>🗺️ Live Bus Tracking</h2>
 
-<!-- ✅ ETA TEXT -->
 <p id="eta">ETA: calculating...</p>
 
 <div id="map"></div>
@@ -39,10 +38,9 @@ var busIcon = L.icon({
 });
 
 var marker;
-let route = [];
-let polyline = L.polyline(route, {color: 'blue'}).addTo(map);
+let polyline = L.polyline([], {color: 'blue'}).addTo(map);
 
-// ✅ DESTINATION (change this later)
+// ✅ DESTINATION
 let destination = [12.9716, 77.5946];
 
 // ✅ Smooth movement
@@ -86,7 +84,19 @@ function getDistance(p1, p2) {
   return R * c * 1000;
 }
 
-// get location from server every 1 sec
+// ✅ OSRM ROUTE FUNCTION
+async function getRoute(start, end) {
+  let url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
+
+  let res = await fetch(url);
+  let data = await res.json();
+
+  let coords = data.routes[0].geometry.coordinates;
+
+  return coords.map(c => [c[1], c[0]]);
+}
+
+// get location every 1 sec
 setInterval(async ()=>{
 
   try {
@@ -117,10 +127,19 @@ setInterval(async ()=>{
 
     map.setView(newPoint, 15);
 
-    route.push(newPoint);
-    polyline.addLatLng(newPoint);
+    // ✅ REAL ROAD PATH (OSRM)
+    if (marker) {
+      let current = marker.getLatLng();
 
-    // ✅ ETA CALCULATION (REAL ONE)
+      let roadPath = await getRoute(
+        [current.lat, current.lng],
+        newPoint
+      );
+
+      polyline.setLatLngs(roadPath);
+    }
+
+    // ✅ ETA (still basic)
     if (marker) {
       let current = marker.getLatLng();
 
@@ -129,7 +148,7 @@ setInterval(async ()=>{
         destination
       );
 
-      let speed = 10; // m/s (adjust later)
+      let speed = 10;
 
       let eta = dist / speed;
 
