@@ -3,24 +3,35 @@
 <body>
 
 <h2>📡 Conductor Live Location</h2>
+
 <button onclick="startTracking()">Start Sharing Location</button>
+<button onclick="stopTracking()">Stop Sharing Location</button>
+
+<p id="status">Status: Stopped</p>
 
 <script>
+
+let watchId = null;
+
+// ✅ START TRACKING
 function startTracking(){
 
-  alert("Started tracking");
+  if (watchId !== null) return; // already running
 
   if(navigator.geolocation){
 
-    navigator.geolocation.watchPosition(async (position)=>{
+    document.getElementById("status").innerText = "Status: Tracking...";
+    localStorage.setItem("tracking", "on");
+
+    watchId = navigator.geolocation.watchPosition(async (position)=>{
 
       let lat = position.coords.latitude;
       let lng = position.coords.longitude;
 
-      alert("GPS: " + lat + ", " + lng);
+      console.log("GPS:", lat, lng);
 
       try {
-        let res = await fetch("https://bus-tracker-6cmi.onrender.com/update-location", {
+        await fetch("https://bus-tracker-6cmi.onrender.com/update-location", {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -28,21 +39,44 @@ function startTracking(){
           body: JSON.stringify({ lat: lat, lng: lng })
         });
 
-        let txt = await res.text();
-        alert("Server: " + txt);
-
       } catch (e) {
-        alert("Error: " + e.message);
+        console.log("Error:", e.message);
       }
 
     }, (err)=>{
       alert("GPS Error: " + err.message);
+    }, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 5000
     });
 
   } else {
     alert("GPS not supported");
   }
 }
+
+// ✅ STOP TRACKING
+function stopTracking(){
+
+  if (watchId !== null){
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+
+    document.getElementById("status").innerText = "Status: Stopped";
+    localStorage.setItem("tracking", "off");
+
+    console.log("Tracking stopped");
+  }
+}
+
+// ✅ AUTO RESUME AFTER REFRESH
+window.onload = () => {
+  if (localStorage.getItem("tracking") === "on") {
+    startTracking();
+  }
+};
+
 </script>
 
 </body>
