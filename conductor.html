@@ -1,83 +1,70 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Conductor - Bus Tracker</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 40px 20px; background: #f4f6f8; }
+    h1 { margin-bottom: 8px; }
+    p { color: #555; }
+    button { font-size: 20px; padding: 16px 40px; border: none; border-radius: 10px; color: #fff; background: #1a8f3c; cursor: pointer; margin-top: 20px; }
+    button.stop { background: #c62828; }
+    #status { margin-top: 30px; font-size: 18px; }
+    #coords { margin-top: 10px; font-family: monospace; color: #333; }
+  </style>
+</head>
 <body>
+  <h1>🚌 Conductor Panel</h1>
+  <p>Press start to share the bus location.</p>
+  <button id="toggle">Start Sharing</button>
+  <div id="status">Not sharing</div>
+  <div id="coords"></div>
 
-<h2>📡 Conductor Live Location</h2>
+  <script>
+    let watchId = null;
+    const btn = document.getElementById("toggle");
+    const statusEl = document.getElementById("status");
+    const coordsEl = document.getElementById("coords");
 
-<button onclick="startTracking()">Start Sharing Location</button>
-<button onclick="stopTracking()">Stop Sharing Location</button>
+    function sendLocation(lat, lng) {
+      fetch("/update-location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lng })
+      })
+        .then(() => {
+          statusEl.textContent = "✅ Sharing location";
+          coordsEl.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
+        })
+        .catch(() => { statusEl.textContent = "⚠️ Could not reach server"; });
+    }
 
-<p id="status">Status: Stopped</p>
-
-<script>
-
-let watchId = null;
-
-// ✅ START TRACKING
-function startTracking(){
-
-  if (watchId !== null) return; // already running
-
-  if(navigator.geolocation){
-
-    document.getElementById("status").innerText = "Status: Tracking...";
-    localStorage.setItem("tracking", "on");
-
-    watchId = navigator.geolocation.watchPosition(async (position)=>{
-
-      let lat = position.coords.latitude;
-      let lng = position.coords.longitude;
-
-      console.log("GPS:", lat, lng);
-
-      try {
-        await fetch("https://bus-tracker-6cmi.onrender.com/update-location", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ lat: lat, lng: lng })
-        });
-
-      } catch (e) {
-        console.log("Error:", e.message);
+    function start() {
+      if (!navigator.geolocation) {
+        statusEl.textContent = "Geolocation is not supported on this device";
+        return;
       }
+      statusEl.textContent = "Getting location...";
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
+        (err) => { statusEl.textContent = "⚠️ " + err.message; },
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+      );
+      btn.textContent = "Stop Sharing";
+      btn.classList.add("stop");
+    }
 
-    }, (err)=>{
-      alert("GPS Error: " + err.message);
-    }, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 5000
-    });
+    function stop() {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      btn.textContent = "Start Sharing";
+      btn.classList.remove("stop");
+      statusEl.textContent = "Not sharing";
+      coordsEl.textContent = "";
+    }
 
-  } else {
-    alert("GPS not supported");
-  }
-}
-
-// ✅ STOP TRACKING
-function stopTracking(){
-
-  if (watchId !== null){
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
-
-    document.getElementById("status").innerText = "Status: Stopped";
-    localStorage.setItem("tracking", "off");
-
-    console.log("Tracking stopped");
-  }
-}
-
-// ✅ AUTO RESUME AFTER REFRESH
-window.onload = () => {
-  if (localStorage.getItem("tracking") === "on") {
-    startTracking();
-  }
-};
-
-</script>
-
+    btn.addEventListener("click", () => (watchId === null ? start() : stop()));
+  </script>
 </body>
 </html>
