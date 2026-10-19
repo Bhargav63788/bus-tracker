@@ -1,168 +1,62 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-
-<title>Bus Tracker</title>
-
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-
-<style>
-#map {
-  height: 500px;
-}
-</style>
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Track Bus</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; }
+    #bar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000;
+           background: #fff; padding: 8px 18px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.3); font-size: 15px; }
+    #map { height: 100%; width: 100%; }
+  </style>
 </head>
-
 <body>
+  <div id="bar">🚌 Waiting for the bus...</div>
+  <div id="map"></div>
 
-<h2>🗺️ Live Bus Tracking</h2>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map("map").setView([12.9716, 77.5946], 13);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
 
-<p id="eta">ETA: calculating...</p>
+    const busIcon = L.icon({ iconUrl: "bus.png", iconSize: [40, 40], iconAnchor: [20, 20] });
+    let marker = null;
+    let firstFix = true;
+    const bar = document.getElementById("bar");
 
-<div id="map"></div>
+    async function update() {
+      try {
+        const res = await fetch("/get-location");
+        const loc = await res.json();
 
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+        if (!loc.lat && !loc.lng) {
+          bar.textContent = "🚌 Waiting for the conductor to start sharing...";
+          return;
+        }
 
-<script>
-var map = L.map('map').setView([0, 0], 2);
+        const pos = [loc.lat, loc.lng];
+        if (!marker) {
+          marker = L.marker(pos, { icon: busIcon }).addTo(map);
+        } else {
+          marker.setLatLng(pos);
+        }
 
-L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-  maxZoom: 20,
-  subdomains: ['mt0','mt1','mt2','mt3']
-}).addTo(map);
+        if (firstFix) { map.setView(pos, 16); firstFix = false; }
+        else { map.panTo(pos); }
 
-var busIcon = L.icon({
-  iconUrl: 'bus.png',
-  iconSize: [40, 40],
-});
-
-var marker;
-let polyline = L.polyline([], {color: 'blue'}).addTo(map);
-
-let destination = [12.9716, 77.5946];
-
-function smoothMove(marker, newLatLng) {
-  let current = marker.getLatLng();
-
-  let steps = 20;
-  let i = 0;
-
-  let deltaLat = (newLatLng[0] - current.lat) / steps;
-  let deltaLng = (newLatLng[1] - current.lng) / steps;
-
-  let interval = setInterval(() => {
-    if (i >= steps) {
-      clearInterval(interval);
-      return;
-    }
-
-    current.lat += deltaLat;
-    current.lng += deltaLng;
-
-    marker.setLatLng([current.lat, current.lng]);
-    i++;
-  }, 50);
-}
-
-function getDistance(p1, p2) {
-  let R = 6371;
-
-  let dLat = (p2[0] - p1[0]) * Math.PI / 180;
-  let dLng = (p2[1] - p1[1]) * Math.PI / 180;
-
-  let a =
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(p1[0]*Math.PI/180) * Math.cos(p2[0]*Math.PI/180) *
-    Math.sin(dLng/2) * Math.sin(dLng/2);
-
-  let c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-  return R * c * 1000;
-}
-
-async function getRoute(start, end) {
-  let url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
-
-  let res = await fetch(url);
-  let data = await res.json();
-
-  let coords = data.routes[0].geometry.coordinates;
-
-  return coords.map(c => [c[1], c[0]]);
-}
-
-setInterval(async ()=>{
-
-  try {
-
-    const res = await fetch("https://bus-tracker-6cmi.onrender.com/get-location")
-    const data = await res.json();
-
-    if (data.lat === 0 && data.lng === 0) return;
-
-    let newPoint = [data.lat, data.lng];
-
-    if (marker) {
-      let current = marker.getLatLng();
-      let dist = getDistance([current.lat, current.lng], newPoint);
-
-      if (dist > 50) {
-        console.log("Ignored jump:", dist);
-        return;
+        bar.textContent = "🚌 Live: " + loc.lat.toFixed(5) + ", " + loc.lng.toFixed(5);
+      } catch (e) {
+        bar.textContent = "⚠️ Cannot reach server";
       }
     }
 
-    if (!marker) {
-      marker = L.marker(newPoint, { icon: busIcon }).addTo(map).bindPopup("Bus");
-
-      // ✅ ONLY FIRST TIME
-      map.setView(newPoint, 15);
-
-    } else {
-      smoothMove(marker, newPoint);
-    }
-
-    // ❌ REMOVED map.setView from here
-
-    // ✅ ROAD PATH
-    if (marker) {
-      let current = marker.getLatLng();
-
-      let roadPath = await getRoute(
-        [current.lat, current.lng],
-        newPoint
-      );
-
-      polyline.setLatLngs(roadPath);
-    }
-
-    // ✅ ETA
-    if (marker) {
-      let current = marker.getLatLng();
-
-      let dist = getDistance(
-        [current.lat, current.lng],
-        destination
-      );
-
-      let speed = 10;
-
-      let eta = dist / speed;
-
-      let minutes = (eta / 60).toFixed(1);
-
-      document.getElementById("eta").innerText =
-        "ETA to destination: " + minutes + " min";
-    }
-
-  } catch (err){
-    console.log("Error:", err);
-  }
-
-},1000);
-
-</script>
-
+    update();
+    setInterval(update, 3000);
+  </script>
 </body>
 </html>
