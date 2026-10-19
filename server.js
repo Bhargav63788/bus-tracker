@@ -17,7 +17,11 @@ app.get("/bus.png", (req, res) => res.sendFile(path.join(__dirname, "bus.png")))
 
 // receive location
 app.post("/update-location", (req, res) => {
-  busLocation = req.body;
+  const { lat, lng } = req.body || {};
+  if (typeof lat !== "number" || typeof lng !== "number") {
+    return res.status(400).send("Invalid location");
+  }
+  busLocation = { lat, lng };
   console.log("Updated:", busLocation);
   res.send("Location updated");
 });
@@ -27,7 +31,6 @@ app.get("/get-location", (req, res) => {
   res.json(busLocation);
 });
 
-// use the port Render provides
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
