@@ -18,7 +18,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const map = L.map("map").setView([12.9716, 77.5946], 13);
+    const map = L.map("map").setView([20, 0], 2);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: "&copy; OpenStreetMap contributors"
@@ -26,6 +26,7 @@
 
     const busIcon = L.icon({ iconUrl: "bus.png", iconSize: [40, 40], iconAnchor: [20, 20] });
     let marker = null;
+    let accuracyCircle = null;
     let firstFix = true;
     const bar = document.getElementById("bar");
 
@@ -34,7 +35,7 @@
         const res = await fetch("/get-location");
         const loc = await res.json();
 
-        if (!loc.lat && !loc.lng) {
+        if (!loc) {
           bar.textContent = "🚌 Waiting for the conductor to start sharing...";
           return;
         }
@@ -46,10 +47,21 @@
           marker.setLatLng(pos);
         }
 
+        if (typeof loc.accuracy === "number") {
+          if (!accuracyCircle) {
+            accuracyCircle = L.circle(pos, { radius: loc.accuracy, color: "#1976d2", fillOpacity: 0.12 }).addTo(map);
+          } else {
+            accuracyCircle.setLatLng(pos).setRadius(loc.accuracy);
+          }
+        }
+
         if (firstFix) { map.setView(pos, 16); firstFix = false; }
         else { map.panTo(pos); }
 
-        bar.textContent = "🚌 Live: " + loc.lat.toFixed(5) + ", " + loc.lng.toFixed(5);
+        const accuracyText = typeof loc.accuracy === "number"
+          ? " (accuracy about " + Math.round(loc.accuracy) + " m)"
+          : "";
+        bar.textContent = "🚌 Live: " + loc.lat.toFixed(5) + ", " + loc.lng.toFixed(5) + accuracyText;
       } catch (e) {
         bar.textContent = "⚠️ Cannot reach server";
       }
