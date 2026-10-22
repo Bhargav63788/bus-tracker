@@ -27,17 +27,18 @@
     const statusEl = document.getElementById("status");
     const coordsEl = document.getElementById("coords");
 
-    function sendLocation(lat, lng) {
+    function sendLocation(lat, lng, accuracy) {
       fetch("/update-location", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat, lng })
+        body: JSON.stringify({ lat, lng, accuracy })
       })
-        .then(() => {
-          statusEl.textContent = "✅ Sharing location";
+        .then((response) => {
+          if (!response.ok) throw new Error("Server rejected the location");
+          statusEl.textContent = "✅ Sharing location (accuracy about " + Math.round(accuracy) + " m)";
           coordsEl.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
         })
-        .catch(() => { statusEl.textContent = "⚠️ Could not reach server"; });
+        .catch((err) => { statusEl.textContent = "⚠️ " + err.message; });
     }
 
     function start() {
@@ -47,9 +48,9 @@
       }
       statusEl.textContent = "Getting location...";
       watchId = navigator.geolocation.watchPosition(
-        (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude),
+        (pos) => sendLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
         (err) => { statusEl.textContent = "⚠️ " + err.message; },
-        { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
       );
       btn.textContent = "Stop Sharing";
       btn.classList.add("stop");
