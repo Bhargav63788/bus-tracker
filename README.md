@@ -10,6 +10,13 @@ A simple real-time bus location tracker. A conductor can share a device's GPS lo
 - Shows GPS accuracy when the device provides it.
 - Express server provides the web pages and location API.
 
+## Live application
+
+- **Bus tracker:** https://bus-tracker-bluz.onrender.com/track.html
+- **Conductor panel:** https://bus-tracker-bluz.onrender.com/conductor.html
+
+Open the conductor panel on the device sharing its location, allow location access, and select **Start Sharing**. Open the tracker link on the devices watching the bus.
+
 ## Requirements
 
 - [Node.js](https://nodejs.org/) and npm.
