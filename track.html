@@ -2,73 +2,510 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Track Bus</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Live Bus Tracker</title>
+  
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
   <style>
-    html, body { height: 100%; margin: 0; font-family: Arial, sans-serif; }
-    #bar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000;
-           background: #fff; padding: 8px 18px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.3); font-size: 15px; }
-    #map { height: 100%; width: 100%; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #202124;
+      background: #e8eaed;
+      overflow: hidden;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* Top Floating Status Bar */
+    .top-bar {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      max-width: 500px;
+      margin: 0 auto;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 30px;
+      padding: 10px 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .bus-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .bus-tag {
+      background: #1a73e8;
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .bus-coords {
+      font-size: 13px;
+      font-weight: 600;
+      color: #3c4043;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: #f1f3f4;
+      color: #5f6368;
+    }
+
+    .status-badge.online {
+      background: #e6f4ea;
+      color: #137333;
+    }
+
+    .status-badge.offline {
+      background: #fce8e6;
+      color: #c5221f;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Floating Action Buttons on Right */
+    .controls-panel {
+      position: absolute;
+      right: 16px;
+      top: 80px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn-ctrl {
+      background: #ffffff;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #3c4043;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .btn-ctrl:hover {
+      background: #f8f9fa;
+      color: #1a73e8;
+    }
+
+    .btn-ctrl.active {
+      background: #1a73e8;
+      color: #ffffff;
+      border-color: #1a73e8;
+    }
+
+    /* Bottom Status Card */
+    .bottom-card {
+      position: absolute;
+      bottom: 20px;
+      left: 16px;
+      right: 16px;
+      max-width: 480px;
+      margin: 0 auto;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 16px;
+      padding: 16px 20px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+
+    .bottom-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .speed-text {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a73e8;
+    }
+
+    .details-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+      text-align: center;
+    }
+
+    .detail-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .detail-label {
+      font-size: 11px;
+      color: #5f6368;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .detail-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: #202124;
+    }
+
+    /* Bus Marker Style */
+    .bus-pin {
+      position: relative;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .bus-ring {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(26, 115, 232, 0.25);
+      animation: bus-pulse 1.8s infinite;
+    }
+
+    @keyframes bus-pulse {
+      0% { transform: scale(0.6); opacity: 0.9; }
+      100% { transform: scale(2.0); opacity: 0; }
+    }
+
+    .bus-circle {
+      width: 36px;
+      height: 36px;
+      background: #1a73e8;
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      transform-origin: center center;
+    }
+
+    .bus-circle svg {
+      width: 20px;
+      height: 20px;
+      fill: #ffffff;
+    }
   </style>
 </head>
 <body>
-  <div id="bar">🚌 Waiting for the bus...</div>
-  <div id="map"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    const map = L.map("map").setView([20, 0], 2);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+<div id="map"></div>
+
+<!-- Top Status -->
+<div class="top-bar">
+  <div class="bus-info">
+    <div class="bus-tag" id="busIdLabel">BUS-01</div>
+    <div class="bus-coords" id="coordsText">Waiting for GPS...</div>
+  </div>
+  <div class="status-badge" id="statusBadge">
+    <span class="status-dot"></span>
+    <span id="statusLabel">OFFLINE</span>
+  </div>
+</div>
+
+<!-- Floating Action Controls -->
+<div class="controls-panel">
+  <!-- Satellite Toggle -->
+  <button class="btn-ctrl" id="btnSatellite" title="Toggle Satellite Imagery">
+    <span>🛰️</span> <span id="satText">Satellite View</span>
+  </button>
+  <!-- Re-center on Bus -->
+  <button class="btn-ctrl" id="btnRecenter" title="Center map on Bus">
+    <span>🎯</span> <span>Center on Bus</span>
+  </button>
+  <!-- Zoom In -->
+  <button class="btn-ctrl" id="btnZoomIn" style="justify-content: center;">
+    ➕ Zoom In
+  </button>
+  <!-- Zoom Out -->
+  <button class="btn-ctrl" id="btnZoomOut" style="justify-content: center;">
+    ➖ Zoom Out
+  </button>
+</div>
+
+<!-- Bottom Status Card -->
+<div class="bottom-card">
+  <div class="bottom-row">
+    <div>
+      <div style="font-size: 12px; color: #5f6368; font-weight: 600;">BUS SPEED</div>
+      <div class="speed-text" id="speedDisplay">0 km/h</div>
+    </div>
+    <div style="text-align: right;">
+      <div style="font-size: 12px; color: #5f6368; font-weight: 600;">STATUS</div>
+      <div style="font-size: 14px; font-weight: 700; color: #202124;" id="motionStatus">Waiting for coordinates</div>
+    </div>
+  </div>
+  <div class="details-row">
+    <div class="detail-item">
+      <span class="detail-label">Distance</span>
+      <span class="detail-value" id="distDisplay">0.0 km</span>
+    </div>
+    <div class="detail-item">
+      <span class="detail-label">Accuracy</span>
+      <span class="detail-value" id="accDisplay">--</span>
+    </div>
+    <div class="detail-item">
+      <span class="detail-label">Last Ping</span>
+      <span class="detail-value" id="pingDisplay">--</span>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  let map;
+  let streetLayer, satelliteLayer;
+  let isSatellite = false;
+  let autoCenter = true;
+  let busMarker = null;
+  let accuracyCircle = null;
+  let pathPolyline = null;
+  let lastPos = null;
+
+  const coordsText = document.getElementById("coordsText");
+  const statusBadge = document.getElementById("statusBadge");
+  const statusLabel = document.getElementById("statusLabel");
+  const speedDisplay = document.getElementById("speedDisplay");
+  const motionStatus = document.getElementById("motionStatus");
+  const distDisplay = document.getElementById("distDisplay");
+  const accDisplay = document.getElementById("accDisplay");
+  const pingDisplay = document.getElementById("pingDisplay");
+  const busIdLabel = document.getElementById("busIdLabel");
+  const btnSatellite = document.getElementById("btnSatellite");
+  const satText = document.getElementById("satText");
+  const btnRecenter = document.getElementById("btnRecenter");
+  const btnZoomIn = document.getElementById("btnZoomIn");
+  const btnZoomOut = document.getElementById("btnZoomOut");
+
+  function initMap() {
+    // Standard Google-style street tiles (OpenStreetMap)
+    streetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors"
-    }).addTo(map);
+      attribution: '&copy; OpenStreetMap contributors'
+    });
 
-    const busIcon = L.icon({ iconUrl: "bus.png", iconSize: [40, 40], iconAnchor: [20, 20] });
-    let marker = null;
-    let accuracyCircle = null;
-    let firstFix = true;
-    const bar = document.getElementById("bar");
+    // Real satellite imagery layer (Esri World Imagery)
+    satelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19,
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+    });
 
-    async function update() {
-      try {
-        const res = await fetch("/get-location");
-        const loc = await res.json();
+    map = L.map("map", {
+      center: [20, 0],
+      zoom: 2,
+      zoomControl: false,
+      layers: [streetLayer]
+    });
 
-        if (!loc) {
-          bar.textContent = "🚌 Waiting for the conductor to start sharing...";
-          return;
-        }
+    map.on("dragstart", () => {
+      autoCenter = false;
+      btnRecenter.classList.remove("active");
+    });
+  }
 
-        const pos = [loc.lat, loc.lng];
-        if (!marker) {
-          marker = L.marker(pos, { icon: busIcon }).addTo(map);
-        } else {
-          marker.setLatLng(pos);
-        }
+  function getBusIcon(heading = 0) {
+    return L.divIcon({
+      className: "bus-custom-marker",
+      html: `
+        <div class="bus-pin">
+          <div class="bus-ring"></div>
+          <div class="bus-circle" style="transform: rotate(${heading}deg);">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
+            </svg>
+          </div>
+        </div>
+      `,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22]
+    });
+  }
 
-        if (typeof loc.accuracy === "number") {
-          if (!accuracyCircle) {
-            accuracyCircle = L.circle(pos, { radius: loc.accuracy, color: "#1976d2", fillOpacity: 0.12 }).addTo(map);
-          } else {
-            accuracyCircle.setLatLng(pos).setRadius(loc.accuracy);
-          }
-        }
+  async function updateLocation() {
+    try {
+      const res = await fetch("/get-location");
+      const loc = await res.json();
 
-        if (firstFix) { map.setView(pos, 16); firstFix = false; }
-        else { map.panTo(pos); }
-
-        const accuracyText = typeof loc.accuracy === "number"
-          ? " (accuracy about " + Math.round(loc.accuracy) + " m)"
-          : "";
-        bar.textContent = "🚌 Live: " + loc.lat.toFixed(5) + ", " + loc.lng.toFixed(5) + accuracyText;
-      } catch (e) {
-        bar.textContent = "⚠️ Cannot reach server";
+      if (!loc || !loc.lat || !loc.lng) {
+        statusBadge.className = "status-badge offline";
+        statusLabel.textContent = "WAITING FOR BUS";
+        coordsText.textContent = "Start broadcasting from conductor";
+        motionStatus.textContent = "No signal received yet";
+        return;
       }
-    }
 
-    update();
-    setInterval(update, 3000);
-  </script>
+      const pos = [loc.lat, loc.lng];
+      const heading = loc.heading || 0;
+
+      // Update or create bus marker
+      if (!busMarker) {
+        busMarker = L.marker(pos, { icon: getBusIcon(heading) }).addTo(map);
+        map.setView(pos, 16); // Instantly jump to the actual bus position anywhere!
+        autoCenter = true;
+        btnRecenter.classList.add("active");
+      } else {
+        busMarker.setLatLng(pos);
+        busMarker.setIcon(getBusIcon(heading));
+        if (autoCenter) {
+          map.panTo(pos);
+        }
+      }
+
+      // Draw or update accuracy circle
+      if (typeof loc.accuracy === "number" && loc.accuracy > 0) {
+        if (!accuracyCircle) {
+          accuracyCircle = L.circle(pos, {
+            radius: loc.accuracy,
+            color: "#1a73e8",
+            fillColor: "#1a73e8",
+            fillOpacity: 0.15,
+            weight: 1
+          }).addTo(map);
+        } else {
+          accuracyCircle.setLatLng(pos).setRadius(loc.accuracy);
+        }
+        accDisplay.textContent = Math.round(loc.accuracy) + " m";
+      } else {
+        accDisplay.textContent = "GPS Fix";
+      }
+
+      // Draw real route path driven so far
+      if (loc.history && loc.history.length > 1) {
+        const path = loc.history.map(pt => [pt.lat, pt.lng]);
+        if (!pathPolyline) {
+          pathPolyline = L.polyline(path, {
+            color: "#1a73e8",
+            weight: 5,
+            opacity: 0.85
+          }).addTo(map);
+        } else {
+          pathPolyline.setLatLngs(path);
+        }
+      }
+
+      // Update UI texts
+      if (loc.busId) busIdLabel.textContent = loc.busId;
+      coordsText.textContent = loc.lat.toFixed(5) + ", " + loc.lng.toFixed(5);
+      
+      const speed = loc.speed || 0;
+      speedDisplay.textContent = speed + " km/h";
+      motionStatus.textContent = speed > 2 ? "In Motion" : "Stationary / Idle";
+      
+      if (loc.distanceTraveledKm !== undefined) {
+        distDisplay.textContent = loc.distanceTraveledKm + " km";
+      }
+
+      const age = loc.ageSeconds || 0;
+      pingDisplay.textContent = age < 5 ? "Just now" : age + "s ago";
+
+      if (loc.status === "online") {
+        statusBadge.className = "status-badge online";
+        statusLabel.textContent = "LIVE";
+      } else {
+        statusBadge.className = "status-badge offline";
+        statusLabel.textContent = "SIGNAL LOST";
+      }
+
+    } catch (err) {
+      statusBadge.className = "status-badge offline";
+      statusLabel.textContent = "DISCONNECTED";
+    }
+  }
+
+  // Satellite view toggle
+  btnSatellite.addEventListener("click", () => {
+    if (isSatellite) {
+      map.removeLayer(satelliteLayer);
+      map.addLayer(streetLayer);
+      isSatellite = false;
+      btnSatellite.classList.remove("active");
+      satText.textContent = "Satellite View";
+    } else {
+      map.removeLayer(streetLayer);
+      map.addLayer(satelliteLayer);
+      isSatellite = true;
+      btnSatellite.classList.add("active");
+      satText.textContent = "Street View";
+    }
+  });
+
+  // Re-center on Bus
+  btnRecenter.addEventListener("click", () => {
+    autoCenter = true;
+    btnRecenter.classList.add("active");
+    if (busMarker) {
+      map.setView(busMarker.getLatLng(), 16);
+    }
+  });
+
+  btnZoomIn.addEventListener("click", () => map.zoomIn());
+  btnZoomOut.addEventListener("click", () => map.zoomOut());
+
+  // Init
+  initMap();
+  updateLocation();
+  setInterval(updateLocation, 2500);
+</script>
+
 </body>
 </html>
