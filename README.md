@@ -6,8 +6,16 @@ A professional, Google Maps-style transit tracking system built with Node.js, Ex
 
 ## 🌟 Upgraded Features
 
-- **Google Maps Transit Aesthetic**: Full-screen vector transit map with CartoDB Voyager styling, satellite view toggle, and Google Maps-style floating action buttons.
-- **Smooth Real-Time Tracking**: Coordinates update with smooth `requestAnimationFrame` cubic interpolation instead of abrupt marker jumping.
+- **Real-Time WebSocket Streaming**: Instant sub-second coordinate push via WebSockets with seamless automatic fallback to HTTP polling.
+- **Session-Aware Route Polyline**: 
+  - Clicking **Start Tracking** begins a fresh session and clears any previous polyline.
+  - Clicking **Stop Tracking** preserves the completed journey's polyline visible on the map.
+  - Restarting creates a new journey starting strictly from the latest valid coordinate without connecting to old sessions.
+- **Highway & Road Alignment (OSRM Snapping)**:
+  - Snaps vehicle GPS fixes within 35 meters to confirmed highway/road centerlines, preventing marker drift into adjacent fields or buildings.
+  - Discards null-island glitches `(0, 0)` and filters stationary micro-jitter (< 1.5m).
+  - Retains raw GPS coordinates as ground truth.
+- **Google Maps Transit Aesthetic**: Full-screen vector transit map with satellite view toggle, floating controls, live speed, session distance, and accuracy indicators.
 - **Directional Heading**: Custom high-DPI bus marker with 360° heading arrow and animated radar ping waves.
 - **Route & Dynamic ETA**:
   - Double-layer transit polyline casing along realistic transit corridors.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Live Bus Tracker</title>
+  <title>Live Bus Tracker - Passenger View</title>
   
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -40,25 +40,28 @@
       top: 16px;
       left: 16px;
       right: 16px;
-      max-width: 500px;
+      max-width: 580px;
       margin: 0 auto;
       z-index: 1000;
       background: rgba(255, 255, 255, 0.95);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
       border-radius: 30px;
-      padding: 10px 20px;
+      padding: 10px 18px;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
     .bus-info {
       display: flex;
       align-items: center;
       gap: 10px;
+      min-width: 0;
+      flex: 1;
     }
 
     .bus-tag {
@@ -68,12 +71,33 @@
       font-size: 13px;
       padding: 4px 10px;
       border-radius: 6px;
+      white-space: nowrap;
+    }
+
+    .bus-coords-col {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden;
     }
 
     .bus-coords {
       font-size: 13px;
       font-weight: 600;
       color: #3c4043;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+    }
+
+    .road-tag {
+      font-size: 11px;
+      color: #188038;
+      font-weight: 600;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      display: none;
     }
 
     .status-badge {
@@ -82,18 +106,25 @@
       gap: 6px;
       font-size: 12px;
       font-weight: 700;
-      padding: 4px 12px;
+      padding: 5px 12px;
       border-radius: 20px;
       background: #f1f3f4;
       color: #5f6368;
+      transition: all 0.25s ease;
+      white-space: nowrap;
     }
 
-    .status-badge.online {
+    .status-badge.live, .status-badge.running {
       background: #e6f4ea;
       color: #137333;
     }
 
-    .status-badge.offline {
+    .status-badge.stopped {
+      background: #fef7e0;
+      color: #b06000;
+    }
+
+    .status-badge.offline, .status-badge.disconnected {
       background: #fce8e6;
       color: #c5221f;
     }
@@ -105,7 +136,18 @@
       background: currentColor;
     }
 
-    /* Floating Action Buttons on Right */
+    .status-badge.live .status-dot,
+    .status-badge.running .status-dot {
+      animation: pulse-dot 1.5s infinite;
+    }
+
+    @keyframes pulse-dot {
+      0% { transform: scale(0.9); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.5; }
+      100% { transform: scale(0.9); opacity: 1; }
+    }
+
+    /* Floating Map Controls on Right (View-Only Tools) */
     .controls-panel {
       position: absolute;
       right: 16px;
@@ -113,14 +155,14 @@
       z-index: 1000;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
 
     .btn-ctrl {
       background: #ffffff;
       border: 1px solid #dadce0;
-      border-radius: 8px;
-      padding: 8px 14px;
+      border-radius: 10px;
+      padding: 9px 14px;
       font-size: 13px;
       font-weight: 600;
       color: #3c4043;
@@ -128,14 +170,16 @@
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
       outline: none;
       transition: all 0.2s;
+      user-select: none;
     }
 
     .btn-ctrl:hover {
       background: #f8f9fa;
       color: #1a73e8;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.2);
     }
 
     .btn-ctrl.active {
@@ -168,7 +212,7 @@
     }
 
     .speed-text {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 700;
       color: #1a73e8;
     }
@@ -235,7 +279,7 @@
       align-items: center;
       justify-content: center;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-      transform-origin: center center;
+      transition: transform 0.3s ease-out;
     }
 
     .bus-circle svg {
@@ -253,28 +297,34 @@
 <div class="top-bar">
   <div class="bus-info">
     <div class="bus-tag" id="busIdLabel">BUS-01</div>
-    <div class="bus-coords" id="coordsText">Waiting for GPS...</div>
+    <div class="bus-coords-col">
+      <div class="bus-coords" id="coordsText">Connecting to live bus feed...</div>
+      <div class="road-tag" id="roadTag">🛣️ On Road</div>
+    </div>
   </div>
   <div class="status-badge" id="statusBadge">
     <span class="status-dot"></span>
-    <span id="statusLabel">OFFLINE</span>
+    <span id="statusLabel">CONNECTING</span>
   </div>
 </div>
 
-<!-- Floating Action Controls -->
+<!-- Floating Action Controls (Passenger View-Only Tools) -->
 <div class="controls-panel">
-  <!-- Satellite Toggle -->
-  <button class="btn-ctrl" id="btnSatellite" title="Toggle Satellite Imagery">
-    <span>🛰️</span> <span id="satText">Satellite View</span>
-  </button>
   <!-- Re-center on Bus -->
-  <button class="btn-ctrl" id="btnRecenter" title="Center map on Bus">
+  <button class="btn-ctrl" id="btnRecenter" title="Center map on live Bus position">
     <span>🎯</span> <span>Center on Bus</span>
   </button>
+
+  <!-- Satellite Toggle -->
+  <button class="btn-ctrl" id="btnSatellite" title="Toggle Satellite / Street Map">
+    <span>🛰️</span> <span id="satText">Satellite View</span>
+  </button>
+
   <!-- Zoom In -->
   <button class="btn-ctrl" id="btnZoomIn" style="justify-content: center;">
     ➕ Zoom In
   </button>
+
   <!-- Zoom Out -->
   <button class="btn-ctrl" id="btnZoomOut" style="justify-content: center;">
     ➖ Zoom Out
@@ -290,20 +340,20 @@
     </div>
     <div style="text-align: right;">
       <div style="font-size: 12px; color: #5f6368; font-weight: 600;">STATUS</div>
-      <div style="font-size: 14px; font-weight: 700; color: #202124;" id="motionStatus">Waiting for coordinates</div>
+      <div style="font-size: 14px; font-weight: 700; color: #202124;" id="motionStatus">Connecting...</div>
     </div>
   </div>
   <div class="details-row">
     <div class="detail-item">
       <span class="detail-label">Distance</span>
-      <span class="detail-value" id="distDisplay">0.0 km</span>
+      <span class="detail-value" id="distDisplay">0.00 km</span>
     </div>
     <div class="detail-item">
       <span class="detail-label">Accuracy</span>
       <span class="detail-value" id="accDisplay">--</span>
     </div>
     <div class="detail-item">
-      <span class="detail-label">Last Ping</span>
+      <span class="detail-label">Last GPS Ping</span>
       <span class="detail-value" id="pingDisplay">--</span>
     </div>
   </div>
@@ -313,16 +363,37 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
 <script>
+  // ----------------------------------------------------
+  // Passenger View-Only Tracker State
+  // ----------------------------------------------------
   let map;
   let streetLayer, satelliteLayer;
   let isSatellite = false;
   let autoCenter = true;
+
   let busMarker = null;
   let accuracyCircle = null;
-  let pathPolyline = null;
-  let lastPos = null;
 
+  // Session & Polyline Management
+  let activePolyline = null;
+  let sessionCoordinates = [];
+  let currentSessionId = null;
+  let sessionStatus = "waiting"; // "running" | "stopped" | "waiting"
+
+  // Marker animation interpolation
+  let animationFrameId = null;
+  let currentMarkerPos = null;
+  let currentHeading = 0;
+
+  // WebSocket and polling fallback
+  let socket = null;
+  let socketReconnectTimer = null;
+  let pollingInterval = null;
+  let lastReceivedTime = null;
+
+  // DOM Elements
   const coordsText = document.getElementById("coordsText");
+  const roadTag = document.getElementById("roadTag");
   const statusBadge = document.getElementById("statusBadge");
   const statusLabel = document.getElementById("statusLabel");
   const speedDisplay = document.getElementById("speedDisplay");
@@ -331,28 +402,33 @@
   const accDisplay = document.getElementById("accDisplay");
   const pingDisplay = document.getElementById("pingDisplay");
   const busIdLabel = document.getElementById("busIdLabel");
+
   const btnSatellite = document.getElementById("btnSatellite");
   const satText = document.getElementById("satText");
   const btnRecenter = document.getElementById("btnRecenter");
   const btnZoomIn = document.getElementById("btnZoomIn");
   const btnZoomOut = document.getElementById("btnZoomOut");
 
+  // ----------------------------------------------------
+  // Leaflet Map Initialization
+  // ----------------------------------------------------
   function initMap() {
-    // Standard Google-style street tiles (OpenStreetMap)
     streetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
       attribution: '&copy; OpenStreetMap contributors'
     });
 
-    // Real satellite imagery layer (Esri World Imagery)
-    satelliteLayer = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
-      maxZoom: 19,
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-    });
+    satelliteLayer = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP'
+      }
+    );
 
     map = L.map("map", {
-      center: [20, 0],
-      zoom: 2,
+      center: [20.5937, 78.9629], // Initial overview until first GPS position
+      zoom: 5,
       zoomControl: false,
       layers: [streetLayer]
     });
@@ -381,98 +457,348 @@
     });
   }
 
-  async function updateLocation() {
-    try {
-      const res = await fetch("/get-location");
-      const loc = await res.json();
+  // ----------------------------------------------------
+  // Smooth Marker Animation (Linear Interpolation)
+  // ----------------------------------------------------
+  function animateMarkerTo(targetPos, targetHeading, durationMs = 800) {
+    if (!busMarker) {
+      currentMarkerPos = targetPos;
+      currentHeading = targetHeading;
+      busMarker = L.marker(targetPos, { icon: getBusIcon(targetHeading) }).addTo(map);
+      map.setView(targetPos, 16);
+      autoCenter = true;
+      btnRecenter.classList.add("active");
+      return;
+    }
 
-      if (!loc || !loc.lat || !loc.lng) {
-        statusBadge.className = "status-badge offline";
-        statusLabel.textContent = "WAITING FOR BUS";
-        coordsText.textContent = "Start broadcasting from conductor";
-        motionStatus.textContent = "No signal received yet";
-        return;
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+    }
+
+    const startPos = currentMarkerPos || busMarker.getLatLng();
+    const startLat = startPos.lat !== undefined ? startPos.lat : startPos[0];
+    const startLng = startPos.lng !== undefined ? startPos.lng : startPos[1];
+
+    const targetLat = targetPos[0];
+    const targetLng = targetPos[1];
+
+    let startH = currentHeading;
+    let diffH = (targetHeading - startH) % 360;
+    if (diffH > 180) diffH -= 360;
+    if (diffH < -180) diffH += 360;
+
+    const startTime = performance.now();
+
+    function step(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / durationMs, 1);
+      const ease = 1 - Math.pow(1 - progress, 3); // Smooth ease-out curve
+
+      const curLat = startLat + (targetLat - startLat) * ease;
+      const curLng = startLng + (targetLng - startLng) * ease;
+      const curH = (startH + diffH * ease + 360) % 360;
+
+      currentMarkerPos = [curLat, curLng];
+      currentHeading = curH;
+
+      busMarker.setLatLng(currentMarkerPos);
+      busMarker.setIcon(getBusIcon(Math.round(curH)));
+
+      if (autoCenter) {
+        map.panTo(currentMarkerPos, { animate: false });
       }
 
-      const pos = [loc.lat, loc.lng];
-      const heading = loc.heading || 0;
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(step);
+      }
+    }
 
-      // Update or create bus marker
-      if (!busMarker) {
-        busMarker = L.marker(pos, { icon: getBusIcon(heading) }).addTo(map);
-        map.setView(pos, 16); // Instantly jump to the actual bus position anywhere!
-        autoCenter = true;
-        btnRecenter.classList.add("active");
+    animationFrameId = requestAnimationFrame(step);
+  }
+
+  // ----------------------------------------------------
+  // Automatic Session Synchronization
+  // ----------------------------------------------------
+
+  function handleSessionStarted(newSessionId) {
+    // When conductor restarts tracking:
+    // 1. Remove previous completed polyline
+    if (activePolyline) {
+      map.removeLayer(activePolyline);
+      activePolyline = null;
+    }
+    // 2. Clear coordinates array
+    sessionCoordinates = [];
+    currentSessionId = newSessionId;
+    sessionStatus = "running";
+
+    setStatusBadge("live", "LIVE");
+    motionStatus.textContent = "Conductor started fresh tracking trip";
+  }
+
+  function handleSessionStopped() {
+    // When conductor stops tracking:
+    // 1. Set status to stopped
+    sessionStatus = "stopped";
+    setStatusBadge("stopped", "STOPPED");
+    motionStatus.textContent = "Bus Stopped (Conductor finished trip)";
+    // 2. Note: activePolyline REMAINS visible on the map for user review!
+  }
+
+  // ----------------------------------------------------
+  // GPS Location Ingestion & Rendering
+  // ----------------------------------------------------
+  function processLocationUpdate(loc) {
+    if (!loc || typeof loc.lat !== "number" || typeof loc.lng !== "number") {
+      return;
+    }
+
+    // Check if conductor started a brand-new session
+    if (loc.sessionId && currentSessionId && loc.sessionId !== currentSessionId) {
+      handleSessionStarted(loc.sessionId);
+    } else if (loc.sessionId) {
+      currentSessionId = loc.sessionId;
+    }
+
+    if (loc.sessionStatus) {
+      sessionStatus = loc.sessionStatus;
+    }
+
+    lastReceivedTime = Date.now();
+
+    const displayLat = loc.lat;
+    const displayLng = loc.lng;
+    const rawLat = loc.rawLat !== undefined ? loc.rawLat : displayLat;
+    const rawLng = loc.rawLng !== undefined ? loc.rawLng : displayLng;
+    const targetPos = [displayLat, displayLng];
+    const heading = loc.heading || 0;
+
+    // 1. Move Marker smoothly
+    animateMarkerTo(targetPos, heading);
+
+    // 2. Update accuracy circle
+    if (typeof loc.accuracy === "number" && loc.accuracy > 0) {
+      if (!accuracyCircle) {
+        accuracyCircle = L.circle(targetPos, {
+          radius: loc.accuracy,
+          color: "#1a73e8",
+          fillColor: "#1a73e8",
+          fillOpacity: 0.12,
+          weight: 1
+        }).addTo(map);
       } else {
-        busMarker.setLatLng(pos);
-        busMarker.setIcon(getBusIcon(heading));
-        if (autoCenter) {
-          map.panTo(pos);
-        }
+        accuracyCircle.setLatLng(targetPos).setRadius(loc.accuracy);
       }
-
-      // Draw or update accuracy circle
-      if (typeof loc.accuracy === "number" && loc.accuracy > 0) {
-        if (!accuracyCircle) {
-          accuracyCircle = L.circle(pos, {
-            radius: loc.accuracy,
-            color: "#1a73e8",
-            fillColor: "#1a73e8",
-            fillOpacity: 0.15,
-            weight: 1
-          }).addTo(map);
-        } else {
-          accuracyCircle.setLatLng(pos).setRadius(loc.accuracy);
-        }
-        accDisplay.textContent = Math.round(loc.accuracy) + " m";
-      } else {
-        accDisplay.textContent = "GPS Fix";
+      accDisplay.textContent = `±${Math.round(loc.accuracy)} m`;
+    } else {
+      if (accuracyCircle) {
+        map.removeLayer(accuracyCircle);
+        accuracyCircle = null;
       }
+      accDisplay.textContent = "GPS Fix";
+    }
 
-      // Draw real route path driven so far
-      if (loc.history && loc.history.length > 1) {
-        const path = loc.history.map(pt => [pt.lat, pt.lng]);
-        if (!pathPolyline) {
-          pathPolyline = L.polyline(path, {
+    // 3. Polyline Route Drawing
+    if (sessionStatus === "running") {
+      const lastCoord = sessionCoordinates[sessionCoordinates.length - 1];
+      const isDuplicate =
+        lastCoord &&
+        Math.abs(lastCoord[0] - displayLat) < 0.00001 &&
+        Math.abs(lastCoord[1] - displayLng) < 0.00001;
+
+      if (!isDuplicate) {
+        sessionCoordinates.push([displayLat, displayLng]);
+
+        if (!activePolyline) {
+          activePolyline = L.polyline(sessionCoordinates, {
             color: "#1a73e8",
             weight: 5,
-            opacity: 0.85
+            opacity: 0.88,
+            lineJoin: "round",
+            lineCap: "round"
           }).addTo(map);
         } else {
-          pathPolyline.setLatLngs(path);
+          activePolyline.setLatLngs(sessionCoordinates);
         }
       }
+    } else if (loc.history && loc.history.length > 0 && sessionCoordinates.length === 0) {
+      // Restore completed route if page was loaded while stopped
+      sessionCoordinates = loc.history.map(p => [p.lat, p.lng]);
+      if (!activePolyline && sessionCoordinates.length > 0) {
+        activePolyline = L.polyline(sessionCoordinates, {
+          color: "#1a73e8",
+          weight: 5,
+          opacity: 0.85,
+          lineJoin: "round",
+          lineCap: "round"
+        }).addTo(map);
+      }
+    }
 
-      // Update UI texts
-      if (loc.busId) busIdLabel.textContent = loc.busId;
-      coordsText.textContent = loc.lat.toFixed(5) + ", " + loc.lng.toFixed(5);
-      
-      const speed = loc.speed || 0;
-      speedDisplay.textContent = speed + " km/h";
+    // 4. Update UI texts
+    if (loc.busId) busIdLabel.textContent = loc.busId;
+    coordsText.textContent = `${rawLat.toFixed(5)}, ${rawLng.toFixed(5)}`;
+
+    if (loc.roadName) {
+      roadTag.textContent = `🛣️ ${loc.roadName}`;
+      roadTag.style.display = "block";
+    } else {
+      roadTag.style.display = "none";
+    }
+
+    // 5. Speed and Status
+    const speed = loc.speed || 0;
+    speedDisplay.textContent = `${speed} km/h`;
+
+    if (sessionStatus === "stopped") {
+      setStatusBadge("stopped", "STOPPED");
+      motionStatus.textContent = "Bus Stopped";
+    } else {
+      setStatusBadge("live", "LIVE");
       motionStatus.textContent = speed > 2 ? "In Motion" : "Stationary / Idle";
-      
-      if (loc.distanceTraveledKm !== undefined) {
-        distDisplay.textContent = loc.distanceTraveledKm + " km";
-      }
+    }
 
-      const age = loc.ageSeconds || 0;
-      pingDisplay.textContent = age < 5 ? "Just now" : age + "s ago";
+    if (loc.distanceTraveledKm !== undefined) {
+      distDisplay.textContent = `${Number(loc.distanceTraveledKm).toFixed(2)} km`;
+    }
 
-      if (loc.status === "online") {
-        statusBadge.className = "status-badge online";
-        statusLabel.textContent = "LIVE";
+    updatePingTimeDisplay();
+  }
+
+  function setStatusBadge(type, label) {
+    statusBadge.className = `status-badge ${type}`;
+    statusLabel.textContent = label;
+  }
+
+  function updatePingTimeDisplay() {
+    if (!lastReceivedTime) {
+      pingDisplay.textContent = "--";
+      return;
+    }
+    const ageSec = Math.round((Date.now() - lastReceivedTime) / 1000);
+    if (ageSec < 4) {
+      pingDisplay.textContent = "Just now";
+    } else {
+      pingDisplay.textContent = `${ageSec}s ago`;
+    }
+
+    if (sessionStatus === "running") {
+      if (ageSec > 40) {
+        setStatusBadge("offline", "SIGNAL LOST");
+      } else if (ageSec > 18) {
+        setStatusBadge("stopped", "WEAK SIGNAL");
       } else {
-        statusBadge.className = "status-badge offline";
-        statusLabel.textContent = "SIGNAL LOST";
+        setStatusBadge("live", "LIVE");
       }
-
-    } catch (err) {
-      statusBadge.className = "status-badge offline";
-      statusLabel.textContent = "DISCONNECTED";
     }
   }
 
-  // Satellite view toggle
+  // ----------------------------------------------------
+  // Network: Real-Time WebSocket Streaming
+  // ----------------------------------------------------
+  function connectWebSocket() {
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}`;
+
+    try {
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        // Connected to server
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+
+          if (payload.type === "location_update" && payload.data) {
+            processLocationUpdate(payload.data);
+          } else if (payload.type === "session_started") {
+            handleSessionStarted(payload.sessionId);
+          } else if (payload.type === "session_stopped") {
+            handleSessionStopped();
+          } else if (payload.type === "state_init" && payload.data) {
+            const data = payload.data;
+            if (data.session) {
+              sessionStatus = data.session.status;
+              currentSessionId = data.session.id;
+
+              if (data.session.history && data.session.history.length > 0) {
+                sessionCoordinates = data.session.history.map(p => [p.lat, p.lng]);
+                if (activePolyline) map.removeLayer(activePolyline);
+                activePolyline = L.polyline(sessionCoordinates, {
+                  color: "#1a73e8",
+                  weight: 5,
+                  opacity: 0.88,
+                  lineJoin: "round",
+                  lineCap: "round"
+                }).addTo(map);
+              }
+            }
+
+            if (data.busLocation) {
+              processLocationUpdate(data.busLocation);
+            } else {
+              setStatusBadge("stopped", sessionStatus === "running" ? "WAITING FOR GPS" : "STOPPED");
+              motionStatus.textContent = sessionStatus === "running" ? "Waiting for GPS transmission" : "Waiting for conductor to start";
+            }
+          }
+        } catch (err) {
+          console.error("Error parsing WebSocket message:", err);
+        }
+      };
+
+      socket.onclose = () => {
+        clearTimeout(socketReconnectTimer);
+        socketReconnectTimer = setTimeout(connectWebSocket, 3000);
+      };
+
+      socket.onerror = () => {
+        if (socket) socket.close();
+      };
+    } catch (e) {
+      console.warn("WebSocket init error, falling back to HTTP polling:", e);
+    }
+  }
+
+  // ----------------------------------------------------
+  // Network: Polling Fallback (GET /get-location)
+  // ----------------------------------------------------
+  async function pollLocation() {
+    try {
+      const res = await fetch("/get-location");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+
+      if (!data || !data.hasLocation) {
+        if (data && data.sessionStatus === "running") {
+          sessionStatus = "running";
+          setStatusBadge("live", "WAITING FOR GPS");
+          coordsText.textContent = "Conductor is active, waiting for first GPS fix...";
+          motionStatus.textContent = "Waiting for initial GPS coordinates";
+        } else {
+          sessionStatus = "stopped";
+          setStatusBadge("stopped", "STOPPED");
+          coordsText.textContent = "Bus is idle (Waiting for conductor)";
+          motionStatus.textContent = "Tracking Stopped";
+        }
+        return;
+      }
+
+      processLocationUpdate(data);
+    } catch (err) {
+      setStatusBadge("disconnected", "DISCONNECTED");
+      motionStatus.textContent = "Cannot reach server";
+    }
+  }
+
+  // ----------------------------------------------------
+  // Event Listeners for Map Controls
+  // ----------------------------------------------------
   btnSatellite.addEventListener("click", () => {
     if (isSatellite) {
       map.removeLayer(satelliteLayer);
@@ -489,22 +815,25 @@
     }
   });
 
-  // Re-center on Bus
   btnRecenter.addEventListener("click", () => {
     autoCenter = true;
     btnRecenter.classList.add("active");
-    if (busMarker) {
-      map.setView(busMarker.getLatLng(), 16);
+    if (currentMarkerPos) {
+      map.setView(currentMarkerPos, 16);
     }
   });
 
   btnZoomIn.addEventListener("click", () => map.zoomIn());
   btnZoomOut.addEventListener("click", () => map.zoomOut());
 
-  // Init
+  // Periodically refresh ping timestamp display
+  setInterval(updatePingTimeDisplay, 1000);
+
+  // Automatic View-Only Initialization
   initMap();
-  updateLocation();
-  setInterval(updateLocation, 2500);
+  connectWebSocket();
+  pollLocation();
+  pollingInterval = setInterval(pollLocation, 2500); // Polling sync loop
 </script>
 
 </body>

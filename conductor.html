@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Conductor Panel - Bus Location Transmitter</title>
+  <title>Conductor Dashboard - GPS Bus Tracker</title>
   <style>
     * {
       box-sizing: border-box;
@@ -26,7 +26,7 @@
     .card {
       background: #ffffff;
       width: 100%;
-      max-width: 440px;
+      max-width: 460px;
       border-radius: 20px;
       padding: 24px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.1);
@@ -53,14 +53,18 @@
     }
 
     .status-bar {
-      background: #e8eaed;
+      background: #fef7e0;
       border-radius: 30px;
-      padding: 10px 16px;
+      padding: 12px 18px;
       font-size: 14px;
       font-weight: 700;
-      color: #3c4043;
+      color: #b06000;
       text-align: center;
       transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
     }
 
     .status-bar.transmitting {
@@ -73,32 +77,54 @@
       color: #c5221f;
     }
 
-    /* Main Big Action Button */
+    /* Start / Stop Control Buttons */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
     .btn-action {
-      background: #1a73e8;
       color: #ffffff;
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 700;
-      padding: 16px;
+      padding: 14px 12px;
       border: none;
       border-radius: 12px;
       cursor: pointer;
-      box-shadow: 0 4px 12px rgba(26,115,232,0.3);
       transition: all 0.2s ease;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: 6px;
+      user-select: none;
     }
 
-    .btn-action:hover {
-      background: #1557b0;
+    .btn-action:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    .btn-start {
+      background: #188038;
+      box-shadow: 0 4px 12px rgba(24, 128, 56, 0.3);
+    }
+
+    .btn-start:hover:not(:disabled) {
+      background: #137333;
       transform: translateY(-2px);
     }
 
-    .btn-action.stop {
+    .btn-stop {
       background: #d93025;
-      box-shadow: 0 4px 12px rgba(217,48,37,0.3);
+      box-shadow: 0 4px 12px rgba(217, 48, 37, 0.3);
+    }
+
+    .btn-stop:hover:not(:disabled) {
+      background: #c5221f;
+      transform: translateY(-2px);
     }
 
     /* Metrics Box */
@@ -144,7 +170,7 @@
     .link-tracker {
       display: block;
       text-align: center;
-      margin-top: 10px;
+      margin-top: 6px;
       color: #1a73e8;
       font-weight: 600;
       font-size: 14px;
@@ -159,21 +185,33 @@
 <body>
 
 <div class="card">
-  <h1><span>🚌</span> Conductor Panel</h1>
-  <p class="subtitle">Broadcast your bus location in real-time</p>
+  <h1><span>🚌</span> Conductor Dashboard</h1>
+  <p class="subtitle">Official GPS transmitter controls for BUS-01</p>
 
-  <div class="status-bar" id="statusBar">Not Broadcasting</div>
+  <!-- Live Status Bar -->
+  <div class="status-bar" id="statusBar">
+    <span>⚪</span> <span id="statusText">Tracking Stopped</span>
+  </div>
 
-  <!-- Primary Toggle Button -->
-  <button class="btn-action" id="toggleBtn">
-    <span>📡</span> <span id="btnLabel">Start Broadcasting</span>
-  </button>
+  <!-- Start Tracking and Stop Tracking Controls -->
+  <div class="controls-grid">
+    <button class="btn-action btn-start" id="btnStartTracking">
+      <span>▶️</span> <span>Start Tracking</span>
+    </button>
+    <button class="btn-action btn-stop" id="btnStopTracking" disabled>
+      <span>⏹️</span> <span>Stop Tracking</span>
+    </button>
+  </div>
 
-  <!-- Live Stats -->
+  <!-- Live Telemetry Stats -->
   <div class="metrics-box">
     <div class="metric-row">
       <span class="metric-name">Latitude, Longitude:</span>
       <span class="metric-val" id="coordsDisplay">-- , --</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-name">Road / Highway:</span>
+      <span class="metric-val" id="roadDisplay" style="color: #188038;">--</span>
     </div>
     <div class="metric-row">
       <span class="metric-name">GPS Accuracy:</span>
@@ -187,28 +225,36 @@
       <span class="metric-name">Packets Transmitted:</span>
       <span class="metric-val" id="packetsDisplay">0</span>
     </div>
+    <div class="metric-row">
+      <span class="metric-name">Active Session:</span>
+      <span class="metric-val" id="sessionDisplay">None</span>
+    </div>
   </div>
 
   <div class="tip-box" id="tipBox">
-    💡 <strong>Note:</strong> When you click "Start Broadcasting", your browser will ask for location permission. Click <strong>Allow</strong> so your bus can be tracked.
+    💡 <strong>Conductor Note:</strong> When you click <strong>Start Tracking</strong>, your device broadcasts live GPS coordinates to all passenger maps in real-time. Click <strong>Stop Tracking</strong> upon completing the trip.
   </div>
 
   <a href="/track.html" target="_blank" class="link-tracker">
-    🗺️ Open Passenger Live Map
+    🗺️ Open Passenger Live Map (View-Only)
   </a>
 </div>
 
 <script>
   let watchId = null;
   let packetsCount = 0;
+  let currentSessionId = null;
 
-  const toggleBtn = document.getElementById("toggleBtn");
-  const btnLabel = document.getElementById("btnLabel");
+  const btnStartTracking = document.getElementById("btnStartTracking");
+  const btnStopTracking = document.getElementById("btnStopTracking");
   const statusBar = document.getElementById("statusBar");
+  const statusText = document.getElementById("statusText");
   const coordsDisplay = document.getElementById("coordsDisplay");
+  const roadDisplay = document.getElementById("roadDisplay");
   const accuracyDisplay = document.getElementById("accuracyDisplay");
   const speedDisplay = document.getElementById("speedDisplay");
   const packetsDisplay = document.getElementById("packetsDisplay");
+  const sessionDisplay = document.getElementById("sessionDisplay");
   const tipBox = document.getElementById("tipBox");
 
   async function postLocation(lat, lng, accuracy, speed, heading) {
@@ -223,22 +269,32 @@
           speed: speed ? Math.round(speed * 3.6) : 0, // convert m/s to km/h
           heading: heading ? Math.round(heading) : 0,
           busId: "BUS-01",
-          source: "conductor"
+          source: "conductor",
+          sessionId: currentSessionId,
+          startSession: true
         })
       });
 
-      if (!res.ok) throw new Error("Server rejected location");
+      if (!res.ok) throw new Error("Server rejected location update");
+      const data = await res.json();
 
       packetsCount++;
       packetsDisplay.textContent = packetsCount;
       statusBar.className = "status-bar transmitting";
-      statusBar.textContent = "✅ LIVE: Broadcasting Location";
+      const roadName = data.roadName || "Highway / Road";
+      statusText.textContent = `🟢 LIVE: Broadcasting (${roadName})`;
+
       coordsDisplay.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
-      accuracyDisplay.textContent = (accuracy ? Math.round(accuracy) : "--") + " meters";
-      speedDisplay.textContent = speed ? Math.round(speed * 3.6) + " km/h" : "0 km/h";
+      roadDisplay.textContent = roadName;
+      accuracyDisplay.textContent = (accuracy ? Math.round(accuracy) : "--") + " m";
+      speedDisplay.textContent = (speed ? Math.round(speed * 3.6) : 0) + " km/h";
+      if (data.sessionId) {
+        currentSessionId = data.sessionId;
+        sessionDisplay.textContent = currentSessionId.slice(-8);
+      }
     } catch (err) {
       statusBar.className = "status-bar error";
-      statusBar.textContent = "⚠️ " + err.message;
+      statusText.textContent = "⚠️ " + err.message;
     }
   }
 
@@ -254,67 +310,95 @@
   function handleError(err) {
     statusBar.className = "status-bar error";
     if (err.code === 1) {
-      statusBar.textContent = "❌ Permission Denied: Allow location in your browser";
+      statusText.textContent = "❌ Permission Denied: Allow location in browser";
       tipBox.innerHTML = "⚠️ <strong>Location Blocked:</strong> Click the lock/tune icon near your browser address bar and set <strong>Location</strong> to <strong>Allow</strong>.";
     } else if (err.code === 2) {
-      statusBar.textContent = "❌ Position Unavailable: Check device location";
+      statusText.textContent = "❌ Position Unavailable: Check device GPS";
     } else if (err.code === 3) {
-      statusBar.textContent = "⏳ Location Timeout: Searching for signal...";
+      statusText.textContent = "⏳ Location Timeout: Searching for GPS satellite signal...";
     } else {
-      statusBar.textContent = "⚠️ GPS Error: " + err.message;
+      statusText.textContent = "⚠️ GPS Error: " + err.message;
     }
   }
 
-  function start() {
+  async function startTracking() {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser");
       return;
     }
 
+    btnStartTracking.disabled = true;
+    btnStopTracking.disabled = false;
     statusBar.className = "status-bar";
-    statusBar.textContent = "🔍 Acquiring GPS Fix...";
-    btnLabel.textContent = "Stop Broadcasting";
-    toggleBtn.classList.add("stop");
+    statusText.textContent = "🔍 Initializing fresh tracking session...";
 
-    // Get an instant fix first
+    try {
+      const res = await fetch("/start-session", { method: "POST" });
+      const data = await res.json();
+      currentSessionId = data.sessionId;
+      sessionDisplay.textContent = currentSessionId.slice(-8);
+      packetsCount = 0;
+      packetsDisplay.textContent = "0";
+    } catch (e) {
+      console.warn("Could not start session on server:", e);
+    }
+
+    // Fast initial fix
     navigator.geolocation.getCurrentPosition(
       handleSuccess,
-      (err) => {
-        console.warn("Fast fix failed, continuing with continuous watch:", err.message);
-      },
+      (err) => console.warn("Initial fix warning:", err.message),
       { enableHighAccuracy: false, timeout: 10000 }
     );
 
-    // Watch position continuously
+    // Continuous real-time GPS tracking
     watchId = navigator.geolocation.watchPosition(
       handleSuccess,
       handleError,
       {
         enableHighAccuracy: true,
-        maximumAge: 3000,
+        maximumAge: 0,
         timeout: 20000
       }
     );
   }
 
-  function stop() {
+  async function stopTracking() {
     if (watchId !== null) {
       navigator.geolocation.clearWatch(watchId);
       watchId = null;
     }
-    btnLabel.textContent = "Start Broadcasting";
-    toggleBtn.classList.remove("stop");
+
+    btnStartTracking.disabled = false;
+    btnStopTracking.disabled = true;
     statusBar.className = "status-bar";
-    statusBar.textContent = "Not Broadcasting";
+    statusText.textContent = "⚪ Tracking Stopped (Finished)";
+
+    try {
+      await fetch("/stop-session", { method: "POST" });
+    } catch (e) {
+      console.warn("Could not stop session on server:", e);
+    }
   }
 
-  toggleBtn.addEventListener("click", () => {
-    if (watchId === null) {
-      start();
-    } else {
-      stop();
-    }
-  });
+  btnStartTracking.addEventListener("click", startTracking);
+  btnStopTracking.addEventListener("click", stopTracking);
+
+  // Synchronize on load with backend active status
+  fetch("/get-location")
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.sessionStatus === "running") {
+        btnStartTracking.disabled = true;
+        btnStopTracking.disabled = false;
+        statusBar.className = "status-bar transmitting";
+        statusText.textContent = "🟢 LIVE: Active Session in Progress";
+        if (data.sessionId) {
+          currentSessionId = data.sessionId;
+          sessionDisplay.textContent = currentSessionId.slice(-8);
+        }
+      }
+    })
+    .catch(() => {});
 </script>
 
 </body>
