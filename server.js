@@ -25,7 +25,7 @@ let activeSession = {
 let latestBusLocation = null;
 const MAX_SESSION_HISTORY = 1000;
 
-// Optional authentication key for hardware GPS / ticket machine
+// Optional authentication key for conductor location updates
 const GPS_API_KEY = process.env.GPS_API_KEY || "";
 
 // In-memory cache for OSRM road snapping (avoids redundant queries)
@@ -289,7 +289,7 @@ app.post("/clear-history", (req, res) => {
   res.json({ status: "success", message: "Route history cleared" });
 });
 
-// POST /update-location: Receives live GPS from hardware / conductor
+// POST /update-location: Receives live GPS from conductor phone/laptop browser
 app.post("/update-location", async (req, res) => {
   const body = req.body || {};
   const {

@@ -1,41 +1,29 @@
-# 🚌 Professional Real-Time Bus Tracker
+# 🚌 Real-Time Bus Tracker
 
-A professional, Google Maps-style transit tracking system built with Node.js, Express, Leaflet, and modern CSS/JavaScript. Supports live vehicle tracking with smooth marker interpolation, dynamic ETAs, bus stop timelines, conductor mobile broadcasting, and autonomous hardware GPS integration (Electronic Ticket Machines / IoT black boxes).
+A real-time transit tracking system built with Node.js, Express, Leaflet, and standard browser Geolocation APIs. Designed to track buses using the conductor's mobile phone or laptop browser GPS without requiring external hardware modules.
 
 ---
 
-## 🌟 Upgraded Features
+## 🌟 Features
 
-- **Real-Time WebSocket Streaming**: Instant sub-second coordinate push via WebSockets with seamless automatic fallback to HTTP polling.
-- **Session-Aware Route Polyline**: 
-  - Clicking **Start Tracking** begins a fresh session and clears any previous polyline.
-  - Clicking **Stop Tracking** preserves the completed journey's polyline visible on the map.
-  - Restarting creates a new journey starting strictly from the latest valid coordinate without connecting to old sessions.
+- **Browser-Native GPS Tracking**: Uses the standard JavaScript `navigator.geolocation.watchPosition()` API on the conductor's mobile phone or laptop browser. No external GPS hardware, Arduino, or serial chips required.
+- **Conductor-Only Control**: Only the conductor has access to **Start Tracking** and **Stop Tracking** controls on the dedicated conductor dashboard.
+- **Automated Passenger Live Map**: Passengers view the bus's live location automatically on their map. No buttons or page refreshes needed.
+- **Real-Time WebSocket Streaming**: Instant sub-second coordinate push via WebSockets with automatic fallback to HTTP polling.
+- **Session-Aware Route Polyline**:
+  - When the conductor starts tracking, a clean new session starts and the previous route polyline is cleared.
+  - While tracking, a vibrant blue polyline follows the actual path traveled.
+  - When the conductor stops tracking, the completed journey's polyline remains visible on the map.
+  - Micro-jitter (< 1.5m) and duplicate coordinates are automatically filtered.
 - **Highway & Road Alignment (OSRM Snapping)**:
   - Snaps vehicle GPS fixes within 35 meters to confirmed highway/road centerlines, preventing marker drift into adjacent fields or buildings.
-  - Discards null-island glitches `(0, 0)` and filters stationary micro-jitter (< 1.5m).
+  - Discards null-island glitches `(0, 0)` and out-of-bounds coordinates.
   - Retains raw GPS coordinates as ground truth.
-- **Google Maps Transit Aesthetic**: Full-screen vector transit map with satellite view toggle, floating controls, live speed, session distance, and accuracy indicators.
-- **Directional Heading**: Custom high-DPI bus marker with 360° heading arrow and animated radar ping waves.
-- **Route & Dynamic ETA**:
-  - Double-layer transit polyline casing along realistic transit corridors.
-  - Interactive bus stops with sequence numbers and popup details.
-  - Dynamic Next Stop indicator with live ETA calculation (in minutes) based on vehicle speed.
-  - Remaining distance and transit progress bar.
-  - Expandable stop-by-stop itinerary drawer.
-- **Autonomous Hardware GPS Integration**:
-  - Direct support for Electronic Ticket Machines (ETMs) and Android POS terminals (Sunmi, PAX, Telpo) via background telemetry service.
-  - Ready-to-flash ESP32 + SIM7600 4G LTE + u-blox GPS firmware template.
-  - Hardware authentication via `X-API-KEY` or Bearer token.
-- **Reliability & Telemetry Health**:
-  - Live status indicator: **LIVE** (green pulse), **WEAK SIGNAL** (amber, >30s), or **SIGNAL LOST** (red, >90s).
-  - Network failure handling with automatic retry banner.
-  - Breadcrumb trails showing recently traveled path.
-- **Testing & Simulation Mode**:
-  - One-click interactive Demo/Simulation button on the live map.
-  - Standalone Python hardware simulator script (`scripts/simulate_hardware_gps.py`).
-  - Enhanced Conductor mobile panel (`conductor.html`) with live telemetry indicators.
-- **100% Backward Compatible**: Retains original Render deployment paths, package scripts, and legacy `/update-location` coordinate payload support.
+- **Smooth Vehicle Animation**: Marker smoothly glides and rotates with vehicle bearing using `requestAnimationFrame` cubic ease-out interpolation.
+- **Map Tools**:
+  - Satellite view and street view toggle.
+  - One-click center on bus.
+  - Real-time speed, accuracy, and session distance traveled.
 
 ---
 
@@ -54,61 +42,27 @@ npm start
 The server will start at: **`http://localhost:3000`**
 
 ### 3. Open in Your Browser
-- **Live Transit Tracker:** [http://localhost:3000/track.html](http://localhost:3000/track.html)
-- **Conductor Console:** [http://localhost:3000/conductor.html](http://localhost:3000/conductor.html)
+- **Passenger Live Map:** [http://localhost:3000/track.html](http://localhost:3000/track.html)
+- **Conductor Dashboard:** [http://localhost:3000/conductor.html](http://localhost:3000/conductor.html)
 - **API Status:** [http://localhost:3000/api/status](http://localhost:3000/api/status)
 
 ---
 
-## 🎮 How to Test Live Tracking
+## 📱 How to Use
 
-You can test live movement in any of these 3 ways:
+### Step 1: Conductor Starts Tracking
+1. Open [http://localhost:3000/conductor.html](http://localhost:3000/conductor.html) on the conductor's mobile phone or laptop browser.
+2. Click **Start Tracking**.
+3. When prompted by your browser, tap **Allow** for Location permissions.
+4. Your device continuously streams high-accuracy GPS coordinates to the server.
 
-### Method 1: One-Click Demo Mode (Easiest)
-1. Open [http://localhost:3000/track.html](http://localhost:3000/track.html) in your browser.
-2. In the floating action buttons on the right side of the map, click the **Play (▶)** button.
-3. The server will start continuous autonomous movement along Express Route 42. You will see the bus glide smoothly along roads, rotate with headings, and update next-stop ETAs in real time!
+### Step 2: Passengers View the Bus
+1. Open [http://localhost:3000/track.html](http://localhost:3000/track.html) on any passenger device.
+2. The page connects automatically and displays the live bus position and route polyline as the bus moves.
 
-### Method 2: Hardware Simulator Script
-Run the Python simulator from your project directory (uses the `.venv` virtual environment):
-```bash
-.\.venv\Scripts\python.exe scripts/simulate_hardware_gps.py
-```
-This sends real-time GPS packets every 2.8 seconds with realistic speed, heading, and accuracy variations, exactly as a physical bus ticket machine would.
-
-### Method 3: Mobile Conductor Console
-1. Open [http://localhost:3000/conductor.html](http://localhost:3000/conductor.html) on a mobile device or browser.
-2. Click **Start Broadcasting**. Your device's GPS coordinates will be sent to the server.
-
----
-
-## 🛰️ Hardware GPS Integration (Ticket Machines & Black Boxes)
-
-To track the bus autonomously without requiring the driver or conductor to keep a phone browser open, the system is designed to accept coordinates from hardware devices.
-
-See the complete guide in [`hardware/README.md`](file:///d:/tracker/hardware/README.md).
-
-### API Endpoint for Hardware:
-- **URL:** `POST /update-location`
-- **Headers:** `Content-Type: application/json`, `X-API-KEY: <optional_key>`
-- **Payload:**
-```json
-{
-  "lat": 12.971598,
-  "lng": 77.594562,
-  "accuracy": 4.5,
-  "speed": 34,
-  "heading": 85,
-  "busId": "BUS-42",
-  "routeId": "route-42",
-  "source": "hardware",
-  "timestamp": 1793175200000
-}
-```
-
-### Ready-Made Firmware & Code:
-- **Android POS Terminal (Sunmi, Telpo, PAX):** [`hardware/AndroidTicketMachineService.kt`](file:///d:/tracker/hardware/AndroidTicketMachineService.kt)
-- **ESP32 + 4G LTE Modem + GPS Module:** [`hardware/esp32_gps_tracker.ino`](file:///d:/tracker/hardware/esp32_gps_tracker.ino)
+### Step 3: Conductor Finishes Trip
+1. On the conductor dashboard, click **Stop Tracking**.
+2. GPS tracking stops immediately. The passenger map marks the bus as **Stopped** while preserving the completed trip route for inspection.
 
 ---
 
@@ -117,18 +71,17 @@ See the complete guide in [`hardware/README.md`](file:///d:/tracker/hardware/REA
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `3000` | Port for the Express server (Render injects this automatically). |
-| `GPS_API_KEY` | *(None / Empty)* | Optional secret key for securing `/update-location`. If set, GPS hardware and conductor panels must supply matching `X-API-KEY` or Bearer token. |
+| `GPS_API_KEY` | *(None / Empty)* | Optional secret key for securing `/update-location`. |
 
 ---
 
 ## ☁️ Deployment on Render
 
-This project is 100% compatible with your existing Render deployment:
+This project is 100% compatible with Render deployment:
 1. Push your updated code to GitHub:
    ```bash
    git add .
-   git commit -m "Upgrade bus tracker to Google Maps transit tracking with hardware GPS support"
+   git commit -m "Update bus tracker: browser GPS tracking with conductor controls"
    git push origin main
    ```
-2. Render will automatically detect the changes, run `npm install`, and start with `npm start`.
-3. If you want to enable API key authentication in production, add `GPS_API_KEY` under **Environment Variables** in your Render dashboard.
+2. Render will automatically detect the changes and deploy.
