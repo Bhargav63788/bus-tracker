@@ -90,16 +90,6 @@
       overflow: hidden;
     }
 
-    .road-tag {
-      font-size: 11px;
-      color: #188038;
-      font-weight: 600;
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      overflow: hidden;
-      display: none;
-    }
-
     .status-badge {
       display: inline-flex;
       align-items: center;
@@ -147,7 +137,7 @@
       100% { transform: scale(0.9); opacity: 1; }
     }
 
-    /* Floating Map Controls on Right (View-Only Tools) */
+    /* Floating Map Controls on Right (Passenger View-Only Tools) */
     .controls-panel {
       position: absolute;
       right: 16px;
@@ -288,6 +278,9 @@
       fill: #ffffff;
     }
   </style>
+
+  <!-- Socket.IO Client Library -->
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
@@ -299,7 +292,6 @@
     <div class="bus-tag" id="busIdLabel">BUS-01</div>
     <div class="bus-coords-col">
       <div class="bus-coords" id="coordsText">Connecting to live bus feed...</div>
-      <div class="road-tag" id="roadTag">🛣️ On Road</div>
     </div>
   </div>
   <div class="status-badge" id="statusBadge">
@@ -380,20 +372,14 @@
   let currentSessionId = null;
   let sessionStatus = "waiting"; // "running" | "stopped" | "waiting"
 
-  // Marker animation interpolation
+  // Marker animation state
   let animationFrameId = null;
   let currentMarkerPos = null;
   let currentHeading = 0;
-
-  // WebSocket and polling fallback
-  let socket = null;
-  let socketReconnectTimer = null;
-  let pollingInterval = null;
   let lastReceivedTime = null;
 
   // DOM Elements
   const coordsText = document.getElementById("coordsText");
-  const roadTag = document.getElementById("roadTag");
   const statusBadge = document.getElementById("statusBadge");
   const statusLabel = document.getElementById("statusLabel");
   const speedDisplay = document.getElementById("speedDisplay");
@@ -427,8 +413,8 @@
     );
 
     map = L.map("map", {
-      center: [20.5937, 78.9629], // Initial overview until first GPS position
-      zoom: 5,
+      center: [0, 0], // Replaced by first real GPS position
+      zoom: 2,
       zoomControl: false,
       layers: [streetLayer]
     });
@@ -458,7 +444,7 @@
   }
 
   // ----------------------------------------------------
-  // Smooth Marker Animation (Linear Interpolation)
+  // Smooth Marker Animation (Linear Interpolation without blocking Leaflet)
   // ----------------------------------------------------
   function animateMarkerTo(targetPos, targetHeading, durationMs = 800) {
     if (!busMarker) {
@@ -475,9 +461,9 @@
       cancelAnimationFrame(animationFrameId);
     }
 
-    const startPos = currentMarkerPos || busMarker.getLatLng();
-    const startLat = startPos.lat !== undefined ? startPos.lat : startPos[0];
-    const startLng = startPos.lng !== undefined ? startPos.lng : startPos[1];
+    const startPos = currentMarkerPos || [busMarker.getLatLng().lat, busMarker.getLatLng().lng];
+    const startLat = Array.isArray(startPos) ? startPos[0] : startPos.lat;
+    const startLng = Array.isArray(startPos) ? startPos[1] : startPos.lng;
 
     const targetLat = targetPos[0];
     const targetLng = targetPos[1];
@@ -492,7 +478,7 @@
     function step(now) {
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / durationMs, 1);
-      const ease = 1 - Math.pow(1 - progress, 3); // Smooth ease-out curve
+      const ease = 1 - Math.pow(1 - progress, 3); // Cubic ease-out
 
       const curLat = startLat + (targetLat - startLat) * ease;
       const curLng = startLng + (targetLng - startLng) * ease;
@@ -504,16 +490,17 @@
       busMarker.setLatLng(currentMarkerPos);
       busMarker.setIcon(getBusIcon(Math.round(curH)));
 
-      if (autoCenter) {
-        map.panTo(currentMarkerPos, { animate: false });
-      }
-
       if (progress < 1) {
         animationFrameId = requestAnimationFrame(step);
       }
     }
 
     animationFrameId = requestAnimationFrame(step);
+
+    // Pan map once per location update instead of 60 FPS to prevent Leaflet stuttering
+    if (autoCenter) {
+      map.panTo(targetPos, { animate: true, duration: 0.8 });
+    }
   }
 
   // ----------------------------------------------------
@@ -521,28 +508,28 @@
   // ----------------------------------------------------
 
   function handleSessionStarted(newSessionId) {
-    // When conductor restarts tracking:
-    // 1. Remove previous completed polyline
+    // When conductor starts a new trip:
+    // 1. Remove previous completed polyline from the map
     if (activePolyline) {
       map.removeLayer(activePolyline);
       activePolyline = null;
     }
-    // 2. Clear coordinates array
+    // 2. Clear coordinate array
     sessionCoordinates = [];
     currentSessionId = newSessionId;
     sessionStatus = "running";
 
     setStatusBadge("live", "LIVE");
-    motionStatus.textContent = "Conductor started fresh tracking trip";
+    motionStatus.textContent = "Conductor started live trip";
   }
 
   function handleSessionStopped() {
     // When conductor stops tracking:
-    // 1. Set status to stopped
+    // 1. Mark status as stopped
     sessionStatus = "stopped";
     setStatusBadge("stopped", "STOPPED");
-    motionStatus.textContent = "Bus Stopped (Conductor finished trip)";
-    // 2. Note: activePolyline REMAINS visible on the map for user review!
+    motionStatus.textContent = "Bus Stopped (Trip Finished)";
+    // 2. Completed journey polyline REMAINS visible for inspection!
   }
 
   // ----------------------------------------------------
@@ -553,7 +540,7 @@
       return;
     }
 
-    // Check if conductor started a brand-new session
+    // Check if a new session started
     if (loc.sessionId && currentSessionId && loc.sessionId !== currentSessionId) {
       handleSessionStarted(loc.sessionId);
     } else if (loc.sessionId) {
@@ -566,14 +553,12 @@
 
     lastReceivedTime = Date.now();
 
-    const displayLat = loc.lat;
-    const displayLng = loc.lng;
-    const rawLat = loc.rawLat !== undefined ? loc.rawLat : displayLat;
-    const rawLng = loc.rawLng !== undefined ? loc.rawLng : displayLng;
-    const targetPos = [displayLat, displayLng];
+    const actualLat = loc.lat;
+    const actualLng = loc.lng;
+    const targetPos = [actualLat, actualLng];
     const heading = loc.heading || 0;
 
-    // 1. Move Marker smoothly
+    // 1. Smoothly move marker according to actual coordinates
     animateMarkerTo(targetPos, heading);
 
     // 2. Update accuracy circle
@@ -603,17 +588,17 @@
       const lastCoord = sessionCoordinates[sessionCoordinates.length - 1];
       const isDuplicate =
         lastCoord &&
-        Math.abs(lastCoord[0] - displayLat) < 0.00001 &&
-        Math.abs(lastCoord[1] - displayLng) < 0.00001;
+        Math.abs(lastCoord[0] - actualLat) < 0.000005 &&
+        Math.abs(lastCoord[1] - actualLng) < 0.000005;
 
       if (!isDuplicate) {
-        sessionCoordinates.push([displayLat, displayLng]);
+        sessionCoordinates.push([actualLat, actualLng]);
 
         if (!activePolyline) {
           activePolyline = L.polyline(sessionCoordinates, {
             color: "#1a73e8",
             weight: 5,
-            opacity: 0.88,
+            opacity: 0.9,
             lineJoin: "round",
             lineCap: "round"
           }).addTo(map);
@@ -622,7 +607,7 @@
         }
       }
     } else if (loc.history && loc.history.length > 0 && sessionCoordinates.length === 0) {
-      // Restore completed route if page was loaded while stopped
+      // Restore completed polyline if passenger opens map after trip finished
       sessionCoordinates = loc.history.map(p => [p.lat, p.lng]);
       if (!activePolyline && sessionCoordinates.length > 0) {
         activePolyline = L.polyline(sessionCoordinates, {
@@ -635,18 +620,11 @@
       }
     }
 
-    // 4. Update UI texts
+    // 4. Update UI labels
     if (loc.busId) busIdLabel.textContent = loc.busId;
-    coordsText.textContent = `${rawLat.toFixed(5)}, ${rawLng.toFixed(5)}`;
+    coordsText.textContent = `${actualLat.toFixed(5)}, ${actualLng.toFixed(5)}`;
 
-    if (loc.roadName) {
-      roadTag.textContent = `🛣️ ${loc.roadName}`;
-      roadTag.style.display = "block";
-    } else {
-      roadTag.style.display = "none";
-    }
-
-    // 5. Speed and Status
+    // 5. Update Speed and Status
     const speed = loc.speed || 0;
     speedDisplay.textContent = `${speed} km/h`;
 
@@ -694,79 +672,77 @@
   }
 
   // ----------------------------------------------------
-  // Network: Real-Time WebSocket Streaming
+  // Network: Socket.IO Real-Time Stream
   // ----------------------------------------------------
-  function connectWebSocket() {
-    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-      return;
-    }
-
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}`;
-
+  function initRealtimeStream() {
+    let socket = null;
     try {
-      socket = new WebSocket(wsUrl);
+      if (typeof io !== "undefined") {
+        socket = io({
+          transports: ["websocket", "polling"],
+          reconnectionAttempts: 10,
+          reconnectionDelay: 2000
+        });
 
-      socket.onopen = () => {
-        // Connected to server
-      };
+        socket.on("connect", () => {
+          if (sessionStatus === "running") {
+            setStatusBadge("live", "LIVE");
+          }
+        });
 
-      socket.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
+        socket.on("location_update", (loc) => {
+          processLocationUpdate(loc);
+        });
 
-          if (payload.type === "location_update" && payload.data) {
-            processLocationUpdate(payload.data);
-          } else if (payload.type === "session_started") {
-            handleSessionStarted(payload.sessionId);
-          } else if (payload.type === "session_stopped") {
-            handleSessionStopped();
-          } else if (payload.type === "state_init" && payload.data) {
-            const data = payload.data;
-            if (data.session) {
-              sessionStatus = data.session.status;
-              currentSessionId = data.session.id;
+        socket.on("session_started", (data) => {
+          handleSessionStarted(data.sessionId);
+        });
 
-              if (data.session.history && data.session.history.length > 0) {
-                sessionCoordinates = data.session.history.map(p => [p.lat, p.lng]);
-                if (activePolyline) map.removeLayer(activePolyline);
-                activePolyline = L.polyline(sessionCoordinates, {
-                  color: "#1a73e8",
-                  weight: 5,
-                  opacity: 0.88,
-                  lineJoin: "round",
-                  lineCap: "round"
-                }).addTo(map);
-              }
-            }
+        socket.on("session_stopped", () => {
+          handleSessionStopped();
+        });
 
-            if (data.busLocation) {
-              processLocationUpdate(data.busLocation);
-            } else {
-              setStatusBadge("stopped", sessionStatus === "running" ? "WAITING FOR GPS" : "STOPPED");
-              motionStatus.textContent = sessionStatus === "running" ? "Waiting for GPS transmission" : "Waiting for conductor to start";
+        socket.on("state_init", (data) => {
+          if (data && data.session) {
+            sessionStatus = data.session.status;
+            currentSessionId = data.session.id;
+
+            if (data.session.history && data.session.history.length > 0) {
+              sessionCoordinates = data.session.history.map(p => [p.lat, p.lng]);
+              if (activePolyline) map.removeLayer(activePolyline);
+              activePolyline = L.polyline(sessionCoordinates, {
+                color: "#1a73e8",
+                weight: 5,
+                opacity: 0.88,
+                lineJoin: "round",
+                lineCap: "round"
+              }).addTo(map);
             }
           }
-        } catch (err) {
-          console.error("Error parsing WebSocket message:", err);
-        }
-      };
 
-      socket.onclose = () => {
-        clearTimeout(socketReconnectTimer);
-        socketReconnectTimer = setTimeout(connectWebSocket, 3000);
-      };
+          if (data && data.busLocation) {
+            processLocationUpdate(data.busLocation);
+          } else {
+            setStatusBadge("stopped", sessionStatus === "running" ? "WAITING FOR GPS" : "STOPPED");
+            motionStatus.textContent = sessionStatus === "running" ? "Waiting for conductor GPS" : "Waiting for conductor to start";
+          }
+        });
 
-      socket.onerror = () => {
-        if (socket) socket.close();
-      };
-    } catch (e) {
-      console.warn("WebSocket init error, falling back to HTTP polling:", e);
+        socket.on("disconnect", () => {
+          setStatusBadge("offline", "OFFLINE (Reconnecting)");
+        });
+
+        socket.on("connect_error", () => {
+          // Socket.IO will auto-fallback to long-polling
+        });
+      }
+    } catch (err) {
+      console.warn("Socket.IO init warning:", err);
     }
   }
 
   // ----------------------------------------------------
-  // Network: Polling Fallback (GET /get-location)
+  // Network: Periodic Sync (GET /get-location)
   // ----------------------------------------------------
   async function pollLocation() {
     try {
@@ -778,7 +754,7 @@
         if (data && data.sessionStatus === "running") {
           sessionStatus = "running";
           setStatusBadge("live", "WAITING FOR GPS");
-          coordsText.textContent = "Conductor is active, waiting for first GPS fix...";
+          coordsText.textContent = "Conductor is active, acquiring first GPS fix...";
           motionStatus.textContent = "Waiting for initial GPS coordinates";
         } else {
           sessionStatus = "stopped";
@@ -831,9 +807,9 @@
 
   // Automatic View-Only Initialization
   initMap();
-  connectWebSocket();
+  initRealtimeStream();
   pollLocation();
-  pollingInterval = setInterval(pollLocation, 2500); // Polling sync loop
+  setInterval(pollLocation, 3500); // Background safety sync
 </script>
 
 </body>

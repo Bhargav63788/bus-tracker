@@ -181,12 +181,15 @@
       text-decoration: underline;
     }
   </style>
+
+  <!-- Socket.IO Client Library -->
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
 <div class="card">
   <h1><span>🚌</span> Conductor Dashboard</h1>
-  <p class="subtitle">Official GPS transmitter controls for BUS-01</p>
+  <p class="subtitle">Broadcast live mobile GPS for BUS-01 to passenger maps</p>
 
   <!-- Live Status Bar -->
   <div class="status-bar" id="statusBar">
@@ -210,10 +213,6 @@
       <span class="metric-val" id="coordsDisplay">-- , --</span>
     </div>
     <div class="metric-row">
-      <span class="metric-name">Road / Highway:</span>
-      <span class="metric-val" id="roadDisplay" style="color: #188038;">--</span>
-    </div>
-    <div class="metric-row">
       <span class="metric-name">GPS Accuracy:</span>
       <span class="metric-val" id="accuracyDisplay">--</span>
     </div>
@@ -222,17 +221,21 @@
       <span class="metric-val" id="speedDisplay">--</span>
     </div>
     <div class="metric-row">
-      <span class="metric-name">Packets Transmitted:</span>
+      <span class="metric-name">Packets Sent:</span>
       <span class="metric-val" id="packetsDisplay">0</span>
     </div>
     <div class="metric-row">
       <span class="metric-name">Active Session:</span>
       <span class="metric-val" id="sessionDisplay">None</span>
     </div>
+    <div class="metric-row">
+      <span class="metric-name">Server Stream:</span>
+      <span class="metric-val" id="connDisplay" style="color: #188038;">Connecting...</span>
+    </div>
   </div>
 
   <div class="tip-box" id="tipBox">
-    💡 <strong>Conductor Note:</strong> When you click <strong>Start Tracking</strong>, your device broadcasts live GPS coordinates to all passenger maps in real-time. Click <strong>Stop Tracking</strong> upon completing the trip.
+    💡 <strong>Note:</strong> When you click <strong>Start Tracking</strong>, your phone or laptop browser transmits actual GPS coordinates every 2–3 seconds while moving. Keep this screen on.
   </div>
 
   <a href="/track.html" target="_blank" class="link-tracker">
@@ -242,80 +245,145 @@
 
 <script>
   let watchId = null;
+  let transmissionTimer = null;
+  let heartbeatTimer = null;
+  let wakeLock = null;
+  let isTracking = false;
   let packetsCount = 0;
   let currentSessionId = null;
+  let latestFix = null;
+  let lastSentTimestamp = 0;
 
   const btnStartTracking = document.getElementById("btnStartTracking");
   const btnStopTracking = document.getElementById("btnStopTracking");
   const statusBar = document.getElementById("statusBar");
   const statusText = document.getElementById("statusText");
   const coordsDisplay = document.getElementById("coordsDisplay");
-  const roadDisplay = document.getElementById("roadDisplay");
   const accuracyDisplay = document.getElementById("accuracyDisplay");
   const speedDisplay = document.getElementById("speedDisplay");
   const packetsDisplay = document.getElementById("packetsDisplay");
   const sessionDisplay = document.getElementById("sessionDisplay");
+  const connDisplay = document.getElementById("connDisplay");
   const tipBox = document.getElementById("tipBox");
 
-  async function postLocation(lat, lng, accuracy, speed, heading) {
+  // Initialize Socket.IO connection
+  let socket = null;
+  try {
+    if (typeof io !== "undefined") {
+      socket = io({ transports: ["websocket", "polling"], timeout: 10000 });
+      socket.on("connect", () => {
+        connDisplay.textContent = "Connected (Real-Time)";
+        connDisplay.style.color = "#188038";
+      });
+      socket.on("disconnect", () => {
+        connDisplay.textContent = "Disconnected (Reconnecting...)";
+        connDisplay.style.color = "#d93025";
+      });
+      socket.on("connect_error", () => {
+        connDisplay.textContent = "Polling Fallback";
+        connDisplay.style.color = "#b06000";
+      });
+    } else {
+      connDisplay.textContent = "HTTP REST Mode";
+      connDisplay.style.color = "#1a73e8";
+    }
+  } catch (err) {
+    connDisplay.textContent = "HTTP REST Mode";
+  }
+
+  // Request screen wake lock so mobile phone doesn't sleep in transit
+  async function acquireWakeLock() {
+    try {
+      if ("wakeLock" in navigator) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => {
+          wakeLock = null;
+        });
+      }
+    } catch (e) {
+      console.warn("Wake lock not supported or denied:", e);
+    }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock) {
+      wakeLock.release().catch(() => {});
+      wakeLock = null;
+    }
+  }
+
+  // Transmit the latest GPS coordinate to backend
+  async function transmitLocation(payload) {
+    if (!payload || typeof payload.lat !== "number" || typeof payload.lng !== "number") {
+      return;
+    }
+
     try {
       const res = await fetch("/update-location", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lat: lat,
-          lng: lng,
-          accuracy: accuracy,
-          speed: speed ? Math.round(speed * 3.6) : 0, // convert m/s to km/h
-          heading: heading ? Math.round(heading) : 0,
-          busId: "BUS-01",
-          source: "conductor",
-          sessionId: currentSessionId,
-          startSession: true
-        })
+        body: JSON.stringify(payload)
       });
 
-      if (!res.ok) throw new Error("Server rejected location update");
+      if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
 
       packetsCount++;
       packetsDisplay.textContent = packetsCount;
       statusBar.className = "status-bar transmitting";
-      const roadName = data.roadName || "Highway / Road";
-      statusText.textContent = `🟢 LIVE: Broadcasting (${roadName})`;
+      statusText.textContent = "🟢 LIVE: Broadcasting Real-Time GPS";
 
-      coordsDisplay.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
-      roadDisplay.textContent = roadName;
-      accuracyDisplay.textContent = (accuracy ? Math.round(accuracy) : "--") + " m";
-      speedDisplay.textContent = (speed ? Math.round(speed * 3.6) : 0) + " km/h";
+      coordsDisplay.textContent = payload.lat.toFixed(5) + ", " + payload.lng.toFixed(5);
+      accuracyDisplay.textContent = (payload.accuracy ? "±" + Math.round(payload.accuracy) : "--") + " m";
+      speedDisplay.textContent = (payload.speed ? Math.round(payload.speed) : 0) + " km/h";
+
       if (data.sessionId) {
         currentSessionId = data.sessionId;
         sessionDisplay.textContent = currentSessionId.slice(-8);
       }
+      lastSentTimestamp = Date.now();
     } catch (err) {
       statusBar.className = "status-bar error";
-      statusText.textContent = "⚠️ " + err.message;
+      statusText.textContent = "⚠️ Upload error: " + err.message;
     }
   }
 
-  function handleSuccess(pos) {
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
-    const acc = pos.coords.accuracy;
-    const spd = pos.coords.speed;
-    const hdg = pos.coords.heading;
-    postLocation(lat, lng, acc, spd, hdg);
+  function onLocationSuccess(pos) {
+    const coords = pos.coords;
+    const speedKmH = coords.speed !== null && !isNaN(coords.speed) && coords.speed >= 0
+      ? Math.round(coords.speed * 3.6)
+      : null;
+    const headingDeg = coords.heading !== null && !isNaN(coords.heading)
+      ? Math.round(coords.heading)
+      : null;
+
+    latestFix = {
+      lat: coords.latitude,
+      lng: coords.longitude,
+      accuracy: coords.accuracy,
+      speed: speedKmH,
+      heading: headingDeg,
+      busId: "BUS-01",
+      source: "conductor_mobile",
+      sessionId: currentSessionId,
+      timestamp: pos.timestamp || Date.now()
+    };
+
+    // If never sent yet, send first fix immediately
+    if (isTracking && lastSentTimestamp === 0) {
+      transmitLocation(latestFix);
+    }
   }
 
-  function handleError(err) {
+  function onLocationError(err) {
     statusBar.className = "status-bar error";
     if (err.code === 1) {
-      statusText.textContent = "❌ Permission Denied: Allow location in browser";
-      tipBox.innerHTML = "⚠️ <strong>Location Blocked:</strong> Click the lock/tune icon near your browser address bar and set <strong>Location</strong> to <strong>Allow</strong>.";
+      statusText.textContent = "❌ Permission Denied: Allow GPS in browser";
+      tipBox.innerHTML = "⚠️ <strong>GPS Permission Blocked:</strong> Click the lock/tune icon near your browser address bar and enable <strong>Location</strong>.";
     } else if (err.code === 2) {
-      statusText.textContent = "❌ Position Unavailable: Check device GPS";
+      statusText.textContent = "❌ Position Unavailable: Check phone location switch";
     } else if (err.code === 3) {
-      statusText.textContent = "⏳ Location Timeout: Searching for GPS satellite signal...";
+      statusText.textContent = "⏳ Searching for GPS satellite signal...";
     } else {
       statusText.textContent = "⚠️ GPS Error: " + err.message;
     }
@@ -327,52 +395,91 @@
       return;
     }
 
+    isTracking = true;
+    lastSentTimestamp = 0;
+    packetsCount = 0;
+    packetsDisplay.textContent = "0";
+
     btnStartTracking.disabled = true;
     btnStopTracking.disabled = false;
     statusBar.className = "status-bar";
     statusText.textContent = "🔍 Initializing fresh tracking session...";
 
+    acquireWakeLock();
+
+    // 1. Notify backend to start a fresh tracking session
     try {
       const res = await fetch("/start-session", { method: "POST" });
       const data = await res.json();
       currentSessionId = data.sessionId;
       sessionDisplay.textContent = currentSessionId.slice(-8);
-      packetsCount = 0;
-      packetsDisplay.textContent = "0";
     } catch (e) {
-      console.warn("Could not start session on server:", e);
+      console.warn("Could not start session via REST:", e);
     }
 
-    // Fast initial fix
+    // 2. Request fast initial position fix
     navigator.geolocation.getCurrentPosition(
-      handleSuccess,
+      onLocationSuccess,
       (err) => console.warn("Initial fix warning:", err.message),
-      { enableHighAccuracy: false, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000 }
     );
 
-    // Continuous real-time GPS tracking
+    // 3. Start continuous watchPosition
     watchId = navigator.geolocation.watchPosition(
-      handleSuccess,
-      handleError,
+      onLocationSuccess,
+      onLocationError,
       {
         enableHighAccuracy: true,
         maximumAge: 0,
-        timeout: 20000
+        timeout: 15000
       }
     );
+
+    // 4. Cadenced transmission loop: sends updates to Render every 2.5 - 3 seconds
+    if (transmissionTimer) clearInterval(transmissionTimer);
+    transmissionTimer = setInterval(() => {
+      if (isTracking && latestFix) {
+        transmitLocation(latestFix);
+      }
+    }, 2800);
+
+    // 5. Watchdog timer: forces getCurrentPosition if watchPosition stalls on mobile
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = setInterval(() => {
+      if (isTracking) {
+        navigator.geolocation.getCurrentPosition(
+          onLocationSuccess,
+          () => {},
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+        );
+      }
+    }, 10000);
   }
 
   async function stopTracking() {
+    isTracking = false;
+
     if (watchId !== null) {
       navigator.geolocation.clearWatch(watchId);
       watchId = null;
     }
+    if (transmissionTimer) {
+      clearInterval(transmissionTimer);
+      transmissionTimer = null;
+    }
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+
+    releaseWakeLock();
 
     btnStartTracking.disabled = false;
     btnStopTracking.disabled = true;
     statusBar.className = "status-bar";
     statusText.textContent = "⚪ Tracking Stopped (Finished)";
 
+    // Notify backend that session is complete
     try {
       await fetch("/stop-session", { method: "POST" });
     } catch (e) {
@@ -383,7 +490,7 @@
   btnStartTracking.addEventListener("click", startTracking);
   btnStopTracking.addEventListener("click", stopTracking);
 
-  // Synchronize on load with backend active status
+  // Sync state on load
   fetch("/get-location")
     .then(r => r.json())
     .then(data => {

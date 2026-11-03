@@ -9,16 +9,16 @@ A real-time transit tracking system built with Node.js, Express, Leaflet, and st
 - **Browser-Native GPS Tracking**: Uses the standard JavaScript `navigator.geolocation.watchPosition()` API on the conductor's mobile phone or laptop browser. No external GPS hardware, Arduino, or serial chips required.
 - **Conductor-Only Control**: Only the conductor has access to **Start Tracking** and **Stop Tracking** controls on the dedicated conductor dashboard.
 - **Automated Passenger Live Map**: Passengers view the bus's live location automatically on their map. No buttons or page refreshes needed.
-- **Real-Time WebSocket Streaming**: Instant sub-second coordinate push via WebSockets with automatic fallback to HTTP polling.
+- **Real-Time Socket.IO & WebSocket Streaming**: Instant sub-second coordinate push via Socket.IO with automatic fallback to HTTP polling.
 - **Session-Aware Route Polyline**:
   - When the conductor starts tracking, a clean new session starts and the previous route polyline is cleared.
-  - While tracking, a vibrant blue polyline follows the actual path traveled.
+  - While tracking, a vibrant blue polyline follows the actual path traveled in real time.
   - When the conductor stops tracking, the completed journey's polyline remains visible on the map.
-  - Micro-jitter (< 1.5m) and duplicate coordinates are automatically filtered.
-- **Highway & Road Alignment (OSRM Snapping)**:
-  - Snaps vehicle GPS fixes within 35 meters to confirmed highway/road centerlines, preventing marker drift into adjacent fields or buildings.
+  - Micro-jitter (< 0.5m) and redundant duplicate coordinates are automatically filtered.
+- **Actual GPS Data Integrity**:
+  - Moves the bus marker and draws the polyline strictly according to the actual GPS coordinates received from the device.
+  - No artificial warping, hardcoded snapping, or simulated routes.
   - Discards null-island glitches `(0, 0)` and out-of-bounds coordinates.
-  - Retains raw GPS coordinates as ground truth.
 - **Smooth Vehicle Animation**: Marker smoothly glides and rotates with vehicle bearing using `requestAnimationFrame` cubic ease-out interpolation.
 - **Map Tools**:
   - Satellite view and street view toggle.
