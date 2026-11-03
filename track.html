@@ -74,6 +74,243 @@
       white-space: nowrap;
     }
 
+    /* Bus Selector & Available Buses Styles */
+    .bus-selector-box {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #f1f3f4;
+      border: 1.5px solid #dadce0;
+      border-radius: 10px;
+      padding: 3px 8px;
+      transition: all 0.2s ease;
+    }
+
+    .bus-selector-box:hover, .bus-selector-box:focus-within {
+      border-color: #1a73e8;
+      background: #e8f0fe;
+    }
+
+    .bus-select-dropdown {
+      background: transparent;
+      border: none;
+      font-weight: 700;
+      font-size: 13px;
+      color: #1a73e8;
+      cursor: pointer;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .bus-select-dropdown option {
+      background: #ffffff;
+      color: #202124;
+      font-weight: 600;
+      padding: 6px 10px;
+    }
+
+    .btn-available-pill {
+      background: #1a73e8;
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .btn-available-pill:hover {
+      background: #1557b0;
+    }
+
+    /* Available Buses Modal Overlay */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 2000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-card {
+      background: #ffffff;
+      border-radius: 16px;
+      max-width: 500px;
+      width: 100%;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+      overflow: hidden;
+      animation: modalFadeIn 0.2s ease-out;
+    }
+
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.96) translateY(8px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid #f1f3f4;
+    }
+
+    .modal-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #202124;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .modal-close-btn {
+      background: none;
+      border: none;
+      font-size: 24px;
+      color: #5f6368;
+      cursor: pointer;
+      line-height: 1;
+      padding: 0 4px;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .modal-close-btn:hover {
+      background: #f1f3f4;
+      color: #202124;
+    }
+
+    .modal-subtitle {
+      font-size: 13px;
+      color: #5f6368;
+      padding: 12px 20px 4px;
+    }
+
+    .buses-list-wrap {
+      padding: 12px 20px 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .bus-list-item {
+      border: 1.5px solid #dadce0;
+      border-radius: 12px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #ffffff;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .bus-list-item:hover {
+      border-color: #1a73e8;
+      background: #f8fafd;
+      box-shadow: 0 2px 8px rgba(26, 115, 232, 0.12);
+    }
+
+    .bus-list-item.selected {
+      border-color: #1a73e8;
+      background: #e8f0fe;
+    }
+
+    .bus-item-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .bus-item-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .bus-item-id {
+      font-weight: 700;
+      font-size: 15px;
+      color: #202124;
+    }
+
+    .bus-item-route {
+      font-size: 12px;
+      color: #5f6368;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 270px;
+    }
+
+    .bus-item-badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+    }
+
+    .bus-item-badge.live {
+      background: #e6f4ea;
+      color: #137333;
+    }
+
+    .bus-item-badge.off_route {
+      background: #fce8e6;
+      color: #c5221f;
+    }
+
+    .bus-item-badge.stopped {
+      background: #fef7e0;
+      color: #b06000;
+    }
+
+    .bus-item-badge.idle {
+      background: #f1f3f4;
+      color: #5f6368;
+    }
+
+    .btn-track-this {
+      background: #1a73e8;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 7px 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s ease;
+    }
+
+    .btn-track-this:hover {
+      background: #1557b0;
+    }
+
+    .btn-track-this.active {
+      background: #137333;
+      cursor: default;
+    }
+
     .bus-coords-col {
       display: flex;
       flex-direction: column;
@@ -295,7 +532,17 @@
 <!-- Top Status -->
 <div class="top-bar">
   <div class="bus-info">
-    <div class="bus-tag" id="busIdLabel">BUS-01</div>
+    <div class="bus-selector-box">
+      <span>🚌</span>
+      <select id="busSelect" class="bus-select-dropdown" title="Choose Bus to track">
+        <option value="BUS-01">BUS-01</option>
+        <option value="BUS-02">BUS-02</option>
+        <option value="BUS-03">BUS-03</option>
+      </select>
+      <button type="button" class="btn-available-pill" id="btnTopAvailableBuses" title="View all available buses">
+        All Buses
+      </button>
+    </div>
     <div class="bus-coords-col">
       <div class="bus-coords" id="coordsText">Connecting to live bus feed...</div>
       <div id="routeBanner" style="font-size: 11px; color: #1a73e8; font-weight: 600; display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px;"></div>
@@ -309,6 +556,11 @@
 
 <!-- Floating Action Controls (Passenger View-Only Tools) -->
 <div class="controls-panel">
+  <!-- Available Buses -->
+  <button class="btn-ctrl" id="btnAvailableBuses" title="View all available buses">
+    <span>🚌</span> <span>Available Buses</span>
+  </button>
+
   <!-- Re-center on Bus -->
   <button class="btn-ctrl" id="btnRecenter" title="Center map on live Bus position">
     <span>🎯</span> <span>Center on Bus</span>
@@ -358,6 +610,24 @@
   </div>
 </div>
 
+<!-- Available Buses Modal -->
+<div id="busesModal" class="modal-overlay" style="display: none;">
+  <div class="modal-card">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span>🚌</span> Available Buses
+      </div>
+      <button type="button" class="modal-close-btn" id="btnCloseBusesModal" title="Close modal">&times;</button>
+    </div>
+    <div class="modal-subtitle">
+      Select an available bus to view its live GPS location and assigned route corridor.
+    </div>
+    <div id="busesListContainer" class="buses-list-wrap">
+      <!-- Generated dynamically -->
+    </div>
+  </div>
+</div>
+
 <!-- Leaflet JS -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -372,6 +642,12 @@
 
   let busMarker = null;
   let accuracyCircle = null;
+
+  // Multi-Bus Management
+  let socket = null;
+  let currentSelectedBusId = "BUS-01";
+  let availableBusesList = [];
+  const routesCache = new Map();
 
   // Session & Polyline Management
   let activePolyline = null;
@@ -399,7 +675,13 @@
   const distDisplay = document.getElementById("distDisplay");
   const accDisplay = document.getElementById("accDisplay");
   const pingDisplay = document.getElementById("pingDisplay");
-  const busIdLabel = document.getElementById("busIdLabel");
+
+  const busSelect = document.getElementById("busSelect");
+  const btnTopAvailableBuses = document.getElementById("btnTopAvailableBuses");
+  const btnAvailableBuses = document.getElementById("btnAvailableBuses");
+  const busesModal = document.getElementById("busesModal");
+  const btnCloseBusesModal = document.getElementById("btnCloseBusesModal");
+  const busesListContainer = document.getElementById("busesListContainer");
 
   const btnSatellite = document.getElementById("btnSatellite");
   const satText = document.getElementById("satText");
@@ -425,8 +707,8 @@
     );
 
     map = L.map("map", {
-      center: [0, 0], // Replaced by first real GPS position
-      zoom: 2,
+      center: [13.626, 74.693], // Default centered near active route corridor
+      zoom: 12,
       zoomControl: false,
       layers: [streetLayer]
     });
@@ -516,17 +798,217 @@
   }
 
   // ----------------------------------------------------
-  // Automatic Session Synchronization
+  // Multi-Bus UI & Selection Handling
   // ----------------------------------------------------
+  function updateBusInList(busId, updates = {}) {
+    if (!busId) return;
+    const upperId = busId.toUpperCase();
+    const idx = availableBusesList.findIndex((b) => b.busId === upperId);
+    if (idx !== -1) {
+      availableBusesList[idx] = { ...availableBusesList[idx], ...updates };
+    } else {
+      availableBusesList.push({
+        busId: upperId,
+        name: upperId,
+        status: "idle",
+        ...updates
+      });
+    }
+    renderBusSelectorOptions();
+    if (busesModal && busesModal.style.display !== "none") {
+      renderAvailableBusesModal();
+    }
+  }
 
-  function handleSessionStarted(newSessionId) {
-    // When conductor starts a new trip:
-    // 1. Remove previous completed polyline from the map
+  function renderBusSelectorOptions() {
+    if (!busSelect || !availableBusesList || availableBusesList.length === 0) return;
+
+    const prevValue = busSelect.value || currentSelectedBusId;
+    busSelect.innerHTML = "";
+
+    availableBusesList.forEach((bus) => {
+      const opt = document.createElement("option");
+      opt.value = bus.busId;
+      let statusEmoji = "⚪";
+      if (bus.status === "live") statusEmoji = "🟢";
+      else if (bus.status === "off_route") statusEmoji = "🔴";
+      else if (bus.status === "stopped") statusEmoji = "🟡";
+
+      opt.textContent = `${statusEmoji} ${bus.busId} (${(bus.status || "IDLE").toUpperCase()})`;
+      if (bus.busId === prevValue) {
+        opt.selected = true;
+      }
+      busSelect.appendChild(opt);
+    });
+
+    if (busSelect.value !== prevValue) {
+      busSelect.value = prevValue;
+    }
+  }
+
+  function renderAvailableBusesModal() {
+    if (!busesListContainer) return;
+    if (!availableBusesList || availableBusesList.length === 0) {
+      busesListContainer.innerHTML = '<div style="text-align: center; color: #5f6368; padding: 24px;">Loading available buses...</div>';
+      return;
+    }
+
+    busesListContainer.innerHTML = "";
+    availableBusesList.forEach((bus) => {
+      const isCurrent = bus.busId === currentSelectedBusId;
+      const card = document.createElement("div");
+      card.className = `bus-list-item ${isCurrent ? "selected" : ""}`;
+
+      let badgeClass = bus.status || "idle";
+      let badgeLabel = (bus.status || "IDLE").toUpperCase();
+      if (badgeClass === "live") badgeLabel = "LIVE GPS";
+      if (badgeClass === "off_route") badgeLabel = "OFF ROUTE";
+
+      const routeName = bus.routeName ? `🛣️ ${bus.routeName}` : "🛣️ Unassigned Route";
+      const speedSnippet = (bus.status === "live" && typeof bus.speed === "number")
+        ? ` • ${bus.speed} km/h`
+        : "";
+
+      card.innerHTML = `
+        <div class="bus-item-info">
+          <div class="bus-item-title-row">
+            <span class="bus-item-id">🚌 ${bus.busId}</span>
+            <span class="bus-item-badge ${badgeClass}">${badgeLabel}</span>
+          </div>
+          <div class="bus-item-route" title="${routeName}">${routeName}${speedSnippet}</div>
+        </div>
+        <button type="button" class="btn-track-this ${isCurrent ? "active" : ""}">
+          ${isCurrent ? "✓ Tracking" : "Track Bus"}
+        </button>
+      `;
+
+      card.addEventListener("click", () => {
+        switchBus(bus.busId);
+        closeBusesModal();
+      });
+
+      busesListContainer.appendChild(card);
+    });
+  }
+
+  function openBusesModal() {
+    if (busesModal) {
+      busesModal.style.display = "flex";
+      renderAvailableBusesModal();
+    }
+  }
+
+  function closeBusesModal() {
+    if (busesModal) {
+      busesModal.style.display = "none";
+    }
+  }
+
+  async function switchBus(newBusId) {
+    if (!newBusId) return;
+    const upperId = newBusId.toUpperCase();
+    currentSelectedBusId = upperId;
+
+    if (busSelect) {
+      busSelect.value = upperId;
+    }
+
+    // 1. Clear previous live bus marker & polyline
+    if (busMarker) {
+      map.removeLayer(busMarker);
+      busMarker = null;
+    }
+    if (accuracyCircle) {
+      map.removeLayer(accuracyCircle);
+      accuracyCircle = null;
+    }
+    currentMarkerPos = null;
     if (activePolyline) {
       map.removeLayer(activePolyline);
       activePolyline = null;
     }
-    // 2. Clear coordinate array
+    sessionCoordinates = [];
+    currentSessionId = null;
+
+    // 2. Set connecting status
+    coordsText.textContent = `Connecting to ${upperId}...`;
+    setStatusBadge("stopped", "CONNECTING");
+    motionStatus.textContent = `Switched to ${upperId}`;
+    speedDisplay.textContent = "0 km/h";
+    distDisplay.textContent = "0.00 km";
+    accDisplay.textContent = "--";
+    pingDisplay.textContent = "--";
+
+    // 3. Query Socket.IO for new bus
+    if (socket && socket.connected) {
+      socket.emit("query_bus", upperId);
+    }
+
+    // 4. Query HTTP fallback for selected bus
+    await pollLocation();
+
+    // 5. Look up route assigned to this bus and render it
+    const busInfo = availableBusesList.find((b) => b.busId === upperId);
+    if (busInfo && busInfo.routeId) {
+      await fetchRouteById(busInfo.routeId);
+    }
+
+    renderBusSelectorOptions();
+    renderAvailableBusesModal();
+  }
+
+  async function fetchAvailableBuses() {
+    try {
+      const res = await fetch("/api/buses");
+      if (res.ok) {
+        const buses = await res.json();
+        if (Array.isArray(buses) && buses.length > 0) {
+          availableBusesList = buses;
+          renderBusSelectorOptions();
+          if (busesModal && busesModal.style.display !== "none") {
+            renderAvailableBusesModal();
+          }
+
+          // If current bus route isn't rendered yet, fetch it
+          const cur = buses.find((b) => b.busId === currentSelectedBusId);
+          if (cur && cur.routeId && (!currentActiveRoute || currentActiveRoute.id !== cur.routeId)) {
+            fetchRouteById(cur.routeId);
+          }
+        }
+      }
+    } catch (e) {
+      // Quiet background refresh
+    }
+  }
+
+  async function fetchRouteById(routeId) {
+    if (!routeId) return;
+    if (routesCache.has(routeId)) {
+      renderActiveRoute(routesCache.get(routeId));
+      return;
+    }
+    try {
+      const res = await fetch(`/api/routes/${routeId}`);
+      if (res.ok) {
+        const route = await res.json();
+        routesCache.set(routeId, route);
+        renderActiveRoute(route);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch route:", e);
+    }
+  }
+
+  // ----------------------------------------------------
+  // Automatic Session Synchronization
+  // ----------------------------------------------------
+  function handleSessionStarted(newSessionId, busId) {
+    if (busId && busId.toUpperCase() !== currentSelectedBusId) return;
+
+    if (activePolyline) {
+      map.removeLayer(activePolyline);
+      activePolyline = null;
+    }
     sessionCoordinates = [];
     currentSessionId = newSessionId;
     sessionStatus = "running";
@@ -535,19 +1017,20 @@
     motionStatus.textContent = "Conductor started live trip";
   }
 
-  function handleSessionStopped() {
-    // When conductor stops tracking:
-    // 1. Mark status as stopped
+  function handleSessionStopped(busId) {
+    if (busId && busId.toUpperCase() !== currentSelectedBusId) return;
+
     sessionStatus = "stopped";
     setStatusBadge("stopped", "STOPPED");
     motionStatus.textContent = "Bus Stopped (Trip Finished)";
-    // 2. Completed journey polyline REMAINS visible for inspection!
   }
 
   // ----------------------------------------------------
   // GPS Location Ingestion & Rendering
   // ----------------------------------------------------
   function handleBusOffRoute(data = {}) {
+    if (data.busId && data.busId.toUpperCase() !== currentSelectedBusId) return;
+
     // 1. Immediately remove the bus marker so passengers do not mistake an old position
     if (busMarker) {
       map.removeLayer(busMarker);
@@ -571,12 +1054,17 @@
     if (routeBanner) {
       routeBanner.style.display = "block";
       routeBanner.style.color = "#d93025";
-      routeBanner.textContent = `⚠️ Bus is currently off designated route (${routeName}). Live marker hidden.`;
+      routeBanner.textContent = `⚠️ ${currentSelectedBusId} is currently off designated route (${routeName}). Live marker hidden.`;
     }
   }
 
   function processLocationUpdate(loc) {
     if (!loc) return;
+
+    // Check if this update belongs to currently selected bus
+    if (loc.busId && loc.busId.toUpperCase() !== currentSelectedBusId) {
+      return;
+    }
 
     if (loc.isOffRoute) {
       handleBusOffRoute(loc);
@@ -597,7 +1085,7 @@
 
     // Check if a new session started
     if (loc.sessionId && currentSessionId && loc.sessionId !== currentSessionId) {
-      handleSessionStarted(loc.sessionId);
+      handleSessionStarted(loc.sessionId, loc.busId);
     } else if (loc.sessionId) {
       currentSessionId = loc.sessionId;
     }
@@ -676,7 +1164,6 @@
     }
 
     // 4. Update UI labels
-    if (loc.busId) busIdLabel.textContent = loc.busId;
     coordsText.textContent = `${actualLat.toFixed(5)}, ${actualLng.toFixed(5)}`;
 
     // 5. Update Speed and Status
@@ -762,6 +1249,14 @@
       lineJoin: "round"
     }).addTo(map);
 
+    // If no live bus marker exists yet, fit map bounds to the route
+    if (!busMarker && route.geometry.length > 0) {
+      try {
+        const bounds = L.latLngBounds(route.geometry);
+        map.fitBounds(bounds, { padding: [40, 40] });
+      } catch (e) {}
+    }
+
     // Render bus stop markers along the planned route
     if (route.stops && route.stops.length > 0) {
       route.stops.forEach((s) => {
@@ -791,7 +1286,9 @@
 
   async function pollActiveRoute() {
     try {
-      const res = await fetch("/api/routes/active");
+      const bus = availableBusesList.find((b) => b.busId === currentSelectedBusId);
+      const url = (bus && bus.routeId) ? `/api/routes/${bus.routeId}` : "/api/routes/active";
+      const res = await fetch(url);
       if (res.ok) {
         const route = await res.json();
         renderActiveRoute(route);
@@ -805,7 +1302,6 @@
   // Network: Socket.IO Real-Time Stream
   // ----------------------------------------------------
   function initRealtimeStream() {
-    let socket = null;
     try {
       if (typeof io !== "undefined") {
         socket = io({
@@ -818,27 +1314,111 @@
           if (sessionStatus === "running") {
             setStatusBadge("live", "LIVE");
           }
+          if (currentSelectedBusId) {
+            socket.emit("query_bus", currentSelectedBusId);
+          }
         });
 
         socket.on("location_update", (loc) => {
-          processLocationUpdate(loc);
+          updateBusInList(loc.busId, {
+            status: loc.isOffRoute ? "off_route" : "live",
+            routeName: loc.routeName,
+            routeId: loc.routeId,
+            speed: loc.speed,
+            lastUpdate: loc.updatedAt,
+            hasLocation: !loc.isOffRoute
+          });
+
+          if (loc.busId && loc.busId.toUpperCase() === currentSelectedBusId) {
+            processLocationUpdate(loc);
+          }
         });
 
         // Bus drifted outside assigned route corridor
         socket.on("bus_off_route", (data) => {
-          handleBusOffRoute(data);
+          updateBusInList(data.busId, {
+            status: "off_route",
+            routeName: data.routeName,
+            routeId: data.routeId,
+            hasLocation: false
+          });
+
+          if (data.busId && data.busId.toUpperCase() === currentSelectedBusId) {
+            handleBusOffRoute(data);
+          }
         });
 
         socket.on("session_started", (data) => {
-          handleSessionStarted(data.sessionId);
+          updateBusInList(data.busId, {
+            status: "live",
+            routeId: data.routeId,
+            routeName: data.routeName
+          });
+
+          if (data.busId && data.busId.toUpperCase() === currentSelectedBusId) {
+            handleSessionStarted(data.sessionId, data.busId);
+            if (data.routeId) {
+              fetchRouteById(data.routeId);
+            }
+          }
         });
 
-        socket.on("session_stopped", () => {
-          handleSessionStopped();
+        socket.on("session_stopped", (data) => {
+          const busId = data ? data.busId : null;
+          updateBusInList(busId, { status: "stopped" });
+
+          if (!busId || busId.toUpperCase() === currentSelectedBusId) {
+            handleSessionStopped(busId);
+          }
+        });
+
+        socket.on("buses_update", (buses) => {
+          if (Array.isArray(buses)) {
+            availableBusesList = buses;
+            renderBusSelectorOptions();
+            if (busesModal && busesModal.style.display !== "none") {
+              renderAvailableBusesModal();
+            }
+
+            const current = buses.find((b) => b.busId === currentSelectedBusId);
+            if (current && current.routeId && (!currentActiveRoute || currentActiveRoute.id !== current.routeId)) {
+              fetchRouteById(current.routeId);
+            }
+          }
+        });
+
+        socket.on("bus_state", (state) => {
+          if (state && state.busId === currentSelectedBusId) {
+            if (state.activeRoute) {
+              renderActiveRoute(state.activeRoute);
+            }
+            if (state.isOffRoute) {
+              handleBusOffRoute(state);
+            } else if (state.busLocation) {
+              processLocationUpdate(state.busLocation);
+            } else {
+              sessionStatus = (state.session && state.session.status) || "stopped";
+              setStatusBadge("stopped", sessionStatus === "running" ? "WAITING FOR GPS" : "STOPPED");
+              motionStatus.textContent = sessionStatus === "running" ? "Waiting for conductor GPS" : "Waiting for conductor to start";
+              coordsText.textContent = "Bus is idle (Waiting for conductor)";
+            }
+          }
         });
 
         socket.on("state_init", (data) => {
-          if (data && data.session) {
+          if (data && data.availableBuses) {
+            availableBusesList = data.availableBuses;
+            renderBusSelectorOptions();
+            if (busesModal && busesModal.style.display !== "none") {
+              renderAvailableBusesModal();
+            }
+          }
+
+          if (data && data.activeRoute) {
+            renderActiveRoute(data.activeRoute);
+          }
+
+          if (data && data.session && (!data.session.busId || data.session.busId === currentSelectedBusId)) {
             sessionStatus = data.session.status;
             currentSessionId = data.session.id;
 
@@ -855,13 +1435,9 @@
             }
           }
 
-          if (data && data.activeRoute) {
-            renderActiveRoute(data.activeRoute);
-          }
-
           if (data && data.isOffRoute) {
             handleBusOffRoute(data);
-          } else if (data && data.busLocation) {
+          } else if (data && data.busLocation && (!data.busLocation.busId || data.busLocation.busId === currentSelectedBusId)) {
             processLocationUpdate(data.busLocation);
           } else {
             setStatusBadge("stopped", sessionStatus === "running" ? "WAITING FOR GPS" : "STOPPED");
@@ -871,7 +1447,10 @@
 
         // Listen for live route events emitted by the route editor
         socket.on("route_activated", (route) => {
-          renderActiveRoute(route);
+          const cur = availableBusesList.find((b) => b.busId === currentSelectedBusId);
+          if (!cur || !cur.routeId || cur.routeId === route.id) {
+            renderActiveRoute(route);
+          }
         });
 
         socket.on("route_updated", (route) => {
@@ -904,7 +1483,7 @@
   // ----------------------------------------------------
   async function pollLocation() {
     try {
-      const res = await fetch("/get-location");
+      const res = await fetch(`/get-location?busId=${encodeURIComponent(currentSelectedBusId)}`);
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
 
@@ -917,12 +1496,12 @@
         if (data && data.sessionStatus === "running") {
           sessionStatus = "running";
           setStatusBadge("live", "WAITING FOR GPS");
-          coordsText.textContent = "Conductor is active, acquiring first GPS fix...";
+          coordsText.textContent = `${currentSelectedBusId}: Conductor active, acquiring GPS...`;
           motionStatus.textContent = "Waiting for initial GPS coordinates";
         } else {
           sessionStatus = "stopped";
           setStatusBadge("stopped", "STOPPED");
-          coordsText.textContent = "Bus is idle (Waiting for conductor)";
+          coordsText.textContent = `${currentSelectedBusId} is idle (Waiting for conductor)`;
           motionStatus.textContent = "Tracking Stopped";
         }
         return;
@@ -936,8 +1515,40 @@
   }
 
   // ----------------------------------------------------
-  // Event Listeners for Map Controls
+  // Event Listeners for Map Controls & Bus Selector
   // ----------------------------------------------------
+  if (busSelect) {
+    busSelect.addEventListener("change", (e) => {
+      switchBus(e.target.value);
+    });
+  }
+
+  if (btnTopAvailableBuses) {
+    btnTopAvailableBuses.addEventListener("click", openBusesModal);
+  }
+
+  if (btnAvailableBuses) {
+    btnAvailableBuses.addEventListener("click", openBusesModal);
+  }
+
+  if (btnCloseBusesModal) {
+    btnCloseBusesModal.addEventListener("click", closeBusesModal);
+  }
+
+  if (busesModal) {
+    busesModal.addEventListener("click", (e) => {
+      if (e.target === busesModal) {
+        closeBusesModal();
+      }
+    });
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      closeBusesModal();
+    }
+  });
+
   btnSatellite.addEventListener("click", () => {
     if (isSatellite) {
       map.removeLayer(satelliteLayer);
@@ -971,9 +1582,11 @@
   // Automatic View-Only Initialization
   initMap();
   initRealtimeStream();
+  fetchAvailableBuses();
   pollActiveRoute();
   pollLocation();
   setInterval(pollLocation, 3500); // Background safety sync
+  setInterval(fetchAvailableBuses, 5000); // Background bus list sync
   setInterval(pollActiveRoute, 10000); // Background route refresh
 </script>
 

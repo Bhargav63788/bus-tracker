@@ -252,14 +252,28 @@
   <h1><span>🚌</span> Conductor Dashboard</h1>
   <p class="subtitle">Broadcast live mobile GPS strictly inside assigned route corridor</p>
 
-  <!-- Route Selection (Mandatory for Route-Restricted Tracking) -->
+  <!-- Route & Bus Selection (Mandatory for Route-Restricted Tracking) -->
   <div class="route-selection-box">
-    <label class="route-label" for="routeSelect">
-      <span>🛣️</span> <span>Assigned Bus Route:</span>
-    </label>
-    <select id="routeSelect" class="route-dropdown">
-      <option value="">Loading saved routes...</option>
-    </select>
+    <div style="display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px;">
+      <div>
+        <label class="route-label" for="busSelect">
+          <span>🚌</span> <span>Choose Bus:</span>
+        </label>
+        <select id="busSelect" class="route-dropdown" style="margin-top: 4px;">
+          <option value="BUS-01">BUS-01</option>
+          <option value="BUS-02">BUS-02</option>
+          <option value="BUS-03">BUS-03</option>
+        </select>
+      </div>
+      <div>
+        <label class="route-label" for="routeSelect">
+          <span>🛣️</span> <span>Assigned Route:</span>
+        </label>
+        <select id="routeSelect" class="route-dropdown" style="margin-top: 4px;">
+          <option value="">Loading saved routes...</option>
+        </select>
+      </div>
+    </div>
     <div id="routeMetaInfo" class="route-meta-info" style="display: none;">
       <span id="metaDistance">-- km</span>
       <span id="metaDuration">-- min</span>
@@ -355,6 +369,7 @@
   // Saved Routes State
   let savedRoutes = [];
   let selectedRoute = null;
+  let selectedBusId = "BUS-01";
   const ROUTE_TOLERANCE_METERS = 100;
 
   // Leaflet Map & Layer References
@@ -365,11 +380,16 @@
   let stopsLayerGroup = null;
 
   // DOM Elements
+  const busSelect = document.getElementById("busSelect");
   const routeSelect = document.getElementById("routeSelect");
   const routeMetaInfo = document.getElementById("routeMetaInfo");
   const metaDistance = document.getElementById("metaDistance");
   const metaDuration = document.getElementById("metaDuration");
   const metaStops = document.getElementById("metaStops");
+
+  busSelect.addEventListener("change", (e) => {
+    selectedBusId = e.target.value;
+  });
 
   const btnStartTracking = document.getElementById("btnStartTracking");
   const btnStopTracking = document.getElementById("btnStopTracking");
@@ -729,7 +749,7 @@
       accuracy: coords.accuracy,
       speed: speedKmH,
       heading: headingDeg,
-      busId: "BUS-01",
+      busId: selectedBusId,
       routeId: selectedRoute ? selectedRoute.id : null,
       source: "conductor_mobile",
       sessionId: currentSessionId,
@@ -802,6 +822,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              busId: selectedBusId,
               routeId: selectedRoute.id,
               lat,
               lng,
@@ -831,8 +852,9 @@
 
           btnStopTracking.disabled = false;
           routeSelect.disabled = true; // Lock route dropdown while tracking
+          busSelect.disabled = true; // Lock bus dropdown while tracking
           statusBar.className = "status-bar transmitting";
-          statusText.textContent = "🟢 ON ROUTE: Live GPS broadcasting to passengers";
+          statusText.textContent = `🟢 ON ROUTE: Live GPS (${selectedBusId}) broadcasting to passengers`;
           publishingDisplay.textContent = "LIVE (Broadcasting to Passengers)";
           publishingDisplay.style.color = "#188038";
 
@@ -910,13 +932,18 @@
     btnStartTracking.disabled = false;
     btnStopTracking.disabled = true;
     routeSelect.disabled = false; // Re-enable route switching
+    busSelect.disabled = false; // Re-enable bus switching
     statusBar.className = "status-bar";
     statusText.textContent = "⚪ Tracking Stopped";
     publishingDisplay.textContent = "Stopped";
     publishingDisplay.style.color = "#5f6368";
 
     try {
-      await fetch("/stop-session", { method: "POST" });
+      await fetch("/stop-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ busId: selectedBusId })
+      });
     } catch (e) {
       console.warn("Could not stop session on server:", e);
     }
