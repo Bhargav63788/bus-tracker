@@ -3,6 +3,8 @@ const cors = require("cors");
 const path = require("path");
 const http = require("http");
 const { Server } = require("socket.io");
+const routeStore = require("./routeStore");
+const routeValidator = require("./routeValidator");
 
 const app = express();
 const server = http.createServer(app);
@@ -29,6 +31,10 @@ let activeSession = {
   status: "stopped", // "running" | "stopped"
   startTime: null,
   stopTime: null,
+  routeId: null,
+  routeName: null,
+  isOffRoute: false,
+  offRouteCount: 0,
   history: [] // Points traveled strictly within the active session
 };
 
@@ -44,6 +50,9 @@ const GPS_API_KEY = process.env.GPS_API_KEY || "";
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, "track.html")));
 app.get("/track.html", (req, res) => res.sendFile(path.join(__dirname, "track.html")));
 app.get("/conductor.html", (req, res) => res.sendFile(path.join(__dirname, "conductor.html")));
+app.get("/route-editor.html", (req, res) => res.sendFile(path.join(__dirname, "route-editor.html")));
+app.get("/routes.html", (req, res) => res.sendFile(path.join(__dirname, "route-editor.html")));
+app.get("/routes", (req, res) => res.sendFile(path.join(__dirname, "route-editor.html")));
 app.get("/bus.png", (req, res) => res.sendFile(path.join(__dirname, "bus.png")));
 
 // ----------------------------------------------------
@@ -97,33 +106,90 @@ function getSessionDistanceKm(points) {
 // Session Control Functions
 // ----------------------------------------------------
 
-function startNewTrackingSession() {
+function startNewTrackingSession(options = {}) {
+  const { routeId, lat, lng, accuracy } = options;
+
+  let assignedRoute = null;
+  if (routeId) {
+    assignedRoute = routeStore.getById(routeId);
+    if (!assignedRoute) {
+      return {
+        error: "Selected bus route not found",
+        status: 404
+      };
+    }
+  } else {
+    // If no routeId passed, check if there's an active route
+    assignedRoute = routeStore.getActive();
+  }
+
+  if (!assignedRoute) {
+    return {
+      error: "Please select a bus route before starting tracking.",
+      status: 400
+    };
+  }
+
+  // Strict route check: Conductor must be inside or sufficiently close to the route
+  if (typeof lat === "number" && typeof lng === "number") {
+    const validation = routeValidator.validatePointOnRoute(lat, lng, assignedRoute.geometry, { accuracy });
+    if (!validation.isWithinRoute) {
+      console.log(
+        `[SESSION] Blocked tracking start: Conductor is ${validation.distanceMeters}m away from route "${assignedRoute.name}" (allowed: ${validation.effectiveTolerance}m)`
+      );
+      return {
+        error: "You are outside the selected bus route. Move to the route to start tracking.",
+        status: 403,
+        distanceMeters: validation.distanceMeters,
+        effectiveToleranceMeters: validation.effectiveTolerance,
+        routeId: assignedRoute.id,
+        routeName: assignedRoute.name
+      };
+    }
+  }
+
+  // Activate selected route in persistent routeStore
+  routeStore.setActive(assignedRoute.id);
+
   const newSessionId = "session_" + Date.now();
   activeSession = {
     id: newSessionId,
     status: "running",
     startTime: Date.now(),
     stopTime: null,
+    routeId: assignedRoute.id,
+    routeName: assignedRoute.name,
+    isOffRoute: false,
+    offRouteCount: 0,
     history: [] // Fresh clean array for this new session
   };
 
-  // Broadcast session start to all passenger dashboards
+  // Broadcast session start and active route to all passenger dashboards
   io.emit("session_started", {
     sessionId: newSessionId,
+    routeId: assignedRoute.id,
+    routeName: assignedRoute.name,
     timestamp: activeSession.startTime
   });
 
-  console.log(`[SESSION] Started new tracking session: ${newSessionId}`);
+  io.emit("route_activated", assignedRoute);
+
+  console.log(`[SESSION] Started new tracking session: ${newSessionId} on route "${assignedRoute.name}" (${assignedRoute.id})`);
   return activeSession;
 }
 
 function stopActiveTrackingSession() {
   activeSession.status = "stopped";
   activeSession.stopTime = Date.now();
+  if (latestBusLocation) {
+    latestBusLocation.status = "stopped";
+  }
 
   // Broadcast session stop to all passenger dashboards
   io.emit("session_stopped", {
     sessionId: activeSession.id,
+    routeId: activeSession.routeId,
+    routeName: activeSession.routeName,
     timestamp: activeSession.stopTime,
     historyCount: activeSession.history.length
   });
@@ -137,12 +203,27 @@ function stopActiveTrackingSession() {
 // ----------------------------------------------------
 
 io.on("connection", (socket) => {
+  // Never expose off-route coordinates to passengers
+  let sanitizedLocation = null;
+  if (latestBusLocation && !latestBusLocation.isOffRoute) {
+    sanitizedLocation = latestBusLocation;
+  }
+
+  const currentRoute = activeSession.routeId
+    ? routeStore.getById(activeSession.routeId)
+    : routeStore.getActive();
+
   // Immediately send initial state to the newly connected client
   socket.emit("state_init", {
-    busLocation: latestBusLocation,
+    busLocation: sanitizedLocation,
+    isOffRoute: latestBusLocation ? Boolean(latestBusLocation.isOffRoute) : false,
+    activeRoute: currentRoute,
     session: {
       id: activeSession.id,
       status: activeSession.status,
+      routeId: activeSession.routeId,
+      routeName: activeSession.routeName,
+      isOffRoute: activeSession.isOffRoute,
       startTime: activeSession.startTime,
       stopTime: activeSession.stopTime,
       history: activeSession.history,
@@ -152,8 +233,11 @@ io.on("connection", (socket) => {
   });
 
   // Handle conductor session actions over Socket.IO
-  socket.on("conductor_start_session", () => {
-    startNewTrackingSession();
+  socket.on("conductor_start_session", (data) => {
+    const result = startNewTrackingSession(data || {});
+    if (result.error) {
+      socket.emit("conductor_session_error", result);
+    }
   });
 
   socket.on("conductor_stop_session", () => {
@@ -179,7 +263,8 @@ function processLocationUpdate(body = {}) {
     busId,
     source,
     timestamp,
-    startSession
+    startSession,
+    routeId
   } = body;
 
   // Strict coordinate validation
@@ -199,19 +284,87 @@ function processLocationUpdate(body = {}) {
     return { error: "Invalid GPS coordinates", status: 400 };
   }
 
+  // Determine assigned bus route
+  const effectiveRouteId =
+    routeId ||
+    activeSession.routeId ||
+    (routeStore.getActive() ? routeStore.getActive().id : null);
+  const route = effectiveRouteId
+    ? routeStore.getById(effectiveRouteId)
+    : routeStore.getActive();
+
+  if (!route) {
+    return { error: "No bus route selected. Please select a route.", status: 400 };
+  }
+
   // Auto-start session if requested and none is currently active
   if (startSession && activeSession.status !== "running") {
-    startNewTrackingSession();
+    const startRes = startNewTrackingSession({ routeId: route.id, lat, lng, accuracy });
+    if (startRes.error) {
+      return { error: startRes.error, status: startRes.status || 403, data: startRes };
+    }
   }
 
   const now = Date.now();
+
+  // CONTINUOUS ROUTE VALIDATION
+  const validation = routeValidator.validatePointOnRoute(lat, lng, route.geometry, { accuracy });
+
+  // 1. CONDUCTOR IS OFF-ROUTE: Hide location from passengers immediately
+  if (!validation.isWithinRoute) {
+    activeSession.isOffRoute = true;
+    activeSession.offRouteCount = (activeSession.offRouteCount || 0) + 1;
+
+    // NEVER broadcast off-route coordinates to passengers!
+    latestBusLocation = {
+      isOffRoute: true,
+      status: "off_route",
+      busId: busId || (latestBusLocation && latestBusLocation.busId) || "BUS-01",
+      routeId: route.id,
+      routeName: route.name,
+      distanceToRouteMeters: validation.distanceMeters,
+      effectiveToleranceMeters: validation.effectiveTolerance,
+      updatedAt: now,
+      sessionId: activeSession.id
+    };
+
+    // Emit off-route notification without GPS coordinates
+    io.emit("bus_off_route", {
+      busId: latestBusLocation.busId,
+      routeId: route.id,
+      routeName: route.name,
+      status: "off_route",
+      message: "Bus is currently off route (Location unavailable)",
+      distanceToRouteMeters: validation.distanceMeters,
+      effectiveToleranceMeters: validation.effectiveTolerance,
+      timestamp: now
+    });
+
+    return {
+      status: 200,
+      data: {
+        status: "off_route",
+        isOffRoute: true,
+        message: "You are outside the selected bus route. Location publishing paused.",
+        distanceToRouteMeters: validation.distanceMeters,
+        effectiveToleranceMeters: validation.effectiveTolerance,
+        routeName: route.name,
+        routeId: route.id,
+        sessionId: activeSession.id
+      }
+    };
+  }
+
+  // 2. CONDUCTOR IS ON-ROUTE: Resume publishing to passengers
+  activeSession.isOffRoute = false;
+
   let computedHeading =
     typeof heading === "number" && !isNaN(heading) ? (heading + 360) % 360 : null;
   let computedSpeed =
     typeof speed === "number" && !isNaN(speed) && speed >= 0 ? Math.round(speed) : null;
 
   // Derive speed and heading from sequential positions if device didn't provide them
-  if (latestBusLocation) {
+  if (latestBusLocation && !latestBusLocation.isOffRoute && latestBusLocation.lat) {
     const distKm = getDistanceKm(latestBusLocation.lat, latestBusLocation.lng, lat, lng);
     const timeSec = Math.max((now - latestBusLocation.updatedAt) / 1000, 1);
 
@@ -246,7 +399,12 @@ function processLocationUpdate(body = {}) {
     updatedAt: now,
     clientTimestamp: timestamp || now,
     sessionId: activeSession.id,
-    sessionStatus: activeSession.status
+    sessionStatus: activeSession.status,
+    routeId: route.id,
+    routeName: route.name,
+    isOffRoute: false,
+    distanceToRouteMeters: validation.distanceMeters,
+    effectiveToleranceMeters: validation.effectiveTolerance
   };
 
   latestBusLocation = locationPayload;
@@ -294,14 +452,19 @@ function processLocationUpdate(body = {}) {
     status: 200,
     data: {
       status: "success",
+      isOffRoute: false,
       message: "Location updated",
       serverTime: now,
       lat: locationPayload.lat,
       lng: locationPayload.lng,
       speed: computedSpeed,
       distanceTraveledKm: distanceKm,
+      distanceToRouteMeters: validation.distanceMeters,
+      effectiveToleranceMeters: validation.effectiveTolerance,
       sessionStatus: activeSession.status,
-      sessionId: activeSession.id
+      sessionId: activeSession.id,
+      routeId: route.id,
+      routeName: route.name
     }
   };
 }
@@ -312,12 +475,18 @@ function processLocationUpdate(body = {}) {
 
 // POST /start-session: Conductor begins a new tracking session
 app.post("/start-session", (req, res) => {
-  const session = startNewTrackingSession();
+  const body = req.body || {};
+  const result = startNewTrackingSession(body);
+  if (result.error) {
+    return res.status(result.status || 400).json(result);
+  }
   res.json({
     status: "success",
-    message: "Tracking session started",
-    sessionId: session.id,
-    startTime: session.startTime
+    message: "Tracking session started on route",
+    sessionId: result.id,
+    routeId: result.routeId,
+    routeName: result.routeName,
+    startTime: result.startTime
   });
 });
 
@@ -338,6 +507,74 @@ app.post("/clear-history", (req, res) => {
   activeSession.history = [];
   io.emit("history_cleared", { sessionId: activeSession.id });
   res.json({ status: "success", message: "Route history cleared" });
+});
+
+// ----------------------------------------------------
+// Visual Route Planning & Road Drawing API
+// ----------------------------------------------------
+
+// Calculate road-following route from waypoints via OSRM
+app.post("/api/routes/calculate", async (req, res) => {
+  const { waypoints } = req.body || {};
+  if (!waypoints || !Array.isArray(waypoints) || waypoints.length < 2) {
+    return res.status(400).json({ error: "At least 2 waypoints are required to calculate a road route." });
+  }
+  const result = await routeStore.calculateRoadRoute(waypoints);
+  res.json(result);
+});
+
+// List all saved routes
+app.get("/api/routes", (req, res) => {
+  const routes = routeStore.getAll();
+  res.json(routes);
+});
+
+// Get currently active route
+app.get("/api/routes/active", (req, res) => {
+  const active = routeStore.getActive();
+  res.json(active);
+});
+
+// Get specific route by ID
+app.get("/api/routes/:id", (req, res) => {
+  const route = routeStore.getById(req.params.id);
+  if (!route) return res.status(404).json({ error: "Route not found" });
+  res.json(route);
+});
+
+// Create and save a new route
+app.post("/api/routes", async (req, res) => {
+  const routeData = req.body || {};
+  if (!routeData.waypoints || routeData.waypoints.length < 2) {
+    return res.status(400).json({ error: "A valid route requires at least 2 points (Start and Destination)." });
+  }
+  const saved = await routeStore.create(routeData);
+  io.emit("route_created", saved);
+  res.status(201).json(saved);
+});
+
+// Update an existing route
+app.put("/api/routes/:id", async (req, res) => {
+  const updated = await routeStore.update(req.params.id, req.body || {});
+  if (!updated) return res.status(404).json({ error: "Route not found" });
+  io.emit("route_updated", updated);
+  res.json(updated);
+});
+
+// Delete a route
+app.delete("/api/routes/:id", (req, res) => {
+  const deleted = routeStore.delete(req.params.id);
+  if (!deleted) return res.status(404).json({ error: "Route not found" });
+  io.emit("route_deleted", { id: req.params.id });
+  res.json({ status: "success", message: "Route deleted successfully" });
+});
+
+// Activate a route for live tracking
+app.post("/api/routes/:id/activate", (req, res) => {
+  const activated = routeStore.setActive(req.params.id);
+  if (!activated) return res.status(404).json({ error: "Route not found" });
+  io.emit("route_activated", activated);
+  res.json({ status: "success", route: activated });
 });
 
 // POST /update-location: Receives live GPS from conductor phone/laptop browser
@@ -373,8 +610,25 @@ app.get("/get-location", (req, res) => {
   if (!latestBusLocation) {
     return res.json({
       hasLocation: false,
+      isOffRoute: false,
       sessionStatus: activeSession.status,
       sessionId: activeSession.id,
+      history: []
+    });
+  }
+
+  // If the bus is off-route, NEVER reveal off-route coordinates to passengers!
+  if (latestBusLocation.isOffRoute) {
+    return res.json({
+      hasLocation: false,
+      isOffRoute: true,
+      status: "off_route",
+      message: "Bus is currently off route (Location unavailable)",
+      busId: latestBusLocation.busId || "BUS-01",
+      routeId: latestBusLocation.routeId,
+      routeName: latestBusLocation.routeName,
+      sessionId: activeSession.id,
+      sessionStatus: activeSession.status,
       history: []
     });
   }
@@ -394,6 +648,7 @@ app.get("/get-location", (req, res) => {
   res.json({
     ...latestBusLocation,
     hasLocation: true,
+    isOffRoute: false,
     serverTime: now,
     ageSeconds,
     status: connectionStatus,

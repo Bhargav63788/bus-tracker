@@ -119,6 +119,12 @@
       color: #c5221f;
     }
 
+    .status-badge.offroute {
+      background: #fce8e6;
+      color: #c5221f;
+      border: 1px solid #f5c2c7;
+    }
+
     .status-dot {
       width: 8px;
       height: 8px;
@@ -292,6 +298,7 @@
     <div class="bus-tag" id="busIdLabel">BUS-01</div>
     <div class="bus-coords-col">
       <div class="bus-coords" id="coordsText">Connecting to live bus feed...</div>
+      <div id="routeBanner" style="font-size: 11px; color: #1a73e8; font-weight: 600; display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 340px;"></div>
     </div>
   </div>
   <div class="status-badge" id="statusBadge">
@@ -306,6 +313,11 @@
   <button class="btn-ctrl" id="btnRecenter" title="Center map on live Bus position">
     <span>🎯</span> <span>Center on Bus</span>
   </button>
+
+  <!-- Route Planner Link -->
+  <a href="/route-editor.html" class="btn-ctrl" style="text-decoration: none;" title="Open Visual Route Planner">
+    <span>🗺️</span> <span>Route Planner</span>
+  </a>
 
   <!-- Satellite Toggle -->
   <button class="btn-ctrl" id="btnSatellite" title="Toggle Satellite / Street Map">
@@ -371,6 +383,11 @@
   let sessionCoordinates = [];
   let currentSessionId = null;
   let sessionStatus = "waiting"; // "running" | "stopped" | "waiting"
+
+  // Active Planned Route & Bus Stops
+  let plannedRouteLayer = null;
+  let plannedStopsLayers = [];
+  let currentActiveRoute = null;
 
   // Marker animation state
   let animationFrameId = null;
@@ -535,9 +552,52 @@
   // ----------------------------------------------------
   // GPS Location Ingestion & Rendering
   // ----------------------------------------------------
+  function handleBusOffRoute(data = {}) {
+    // 1. Immediately remove the bus marker so passengers do not mistake an old position
+    if (busMarker) {
+      map.removeLayer(busMarker);
+      busMarker = null;
+    }
+    if (accuracyCircle) {
+      map.removeLayer(accuracyCircle);
+      accuracyCircle = null;
+    }
+    currentMarkerPos = null;
+
+    // 2. Set OFF ROUTE badges and labels
+    setStatusBadge("offroute", "OFF ROUTE");
+    coordsText.textContent = "Bus Location Unavailable (Off Route)";
+    motionStatus.textContent = "Bus is outside designated route";
+    speedDisplay.textContent = "--";
+    accDisplay.textContent = "--";
+
+    const routeName = (data && data.routeName) || (currentActiveRoute && currentActiveRoute.name) || "assigned corridor";
+    const routeBanner = document.getElementById("routeBanner");
+    if (routeBanner) {
+      routeBanner.style.display = "block";
+      routeBanner.style.color = "#d93025";
+      routeBanner.textContent = `⚠️ Bus is currently off designated route (${routeName}). Live marker hidden.`;
+    }
+  }
+
   function processLocationUpdate(loc) {
-    if (!loc || typeof loc.lat !== "number" || typeof loc.lng !== "number") {
+    if (!loc) return;
+
+    if (loc.isOffRoute) {
+      handleBusOffRoute(loc);
       return;
+    }
+
+    if (typeof loc.lat !== "number" || typeof loc.lng !== "number") {
+      return;
+    }
+
+    // Restore banner color if recovering from off-route
+    const routeBanner = document.getElementById("routeBanner");
+    if (routeBanner && currentActiveRoute) {
+      routeBanner.style.color = "#1a73e8";
+      const stopsCount = (currentActiveRoute.stops || []).length;
+      routeBanner.textContent = `🛣️ ${currentActiveRoute.name} (${stopsCount} stop${stopsCount === 1 ? '' : 's'} • ${currentActiveRoute.distanceKm || 0} km)`;
     }
 
     // Check if a new session started
@@ -672,6 +732,81 @@
   }
 
   // ----------------------------------------------------
+  // Planned Route & Bus Stops Layer
+  // ----------------------------------------------------
+  function renderActiveRoute(route) {
+    currentActiveRoute = route;
+    const routeBanner = document.getElementById("routeBanner");
+
+    // Remove existing planned layers
+    if (plannedRouteLayer) {
+      map.removeLayer(plannedRouteLayer);
+      plannedRouteLayer = null;
+    }
+    plannedStopsLayers.forEach((l) => map.removeLayer(l));
+    plannedStopsLayers = [];
+
+    if (!route || !route.geometry || route.geometry.length === 0) {
+      if (routeBanner) routeBanner.style.display = "none";
+      return;
+    }
+
+    if (routeBanner) {
+      routeBanner.style.display = "block";
+      const stopsCount = (route.stops || []).length;
+      routeBanner.textContent = `🛣️ ${route.name} (${stopsCount} stop${stopsCount === 1 ? '' : 's'} • ${route.distanceKm || 0} km)`;
+    }
+
+    // Render planned road geometry in clean translucent blue with dash pattern
+    plannedRouteLayer = L.polyline(route.geometry, {
+      color: "#1a73e8",
+      weight: 6,
+      opacity: 0.55,
+      dashArray: "8, 8",
+      lineCap: "round",
+      lineJoin: "round"
+    }).addTo(map);
+
+    // Render bus stop markers along the planned route
+    if (route.stops && route.stops.length > 0) {
+      route.stops.forEach((s) => {
+        const stopMarker = L.marker([s.lat, s.lng], {
+          icon: L.divIcon({
+            className: "bus-stop-pin",
+            html: `
+              <div style="background: #f9ab00; border: 2px solid #ffffff; border-radius: 50%; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #202124; box-shadow: 0 2px 6px rgba(0,0,0,0.35);" title="Bus Stop: ${s.name}">
+                🚏
+              </div>
+            `,
+            iconSize: [26, 26],
+            iconAnchor: [13, 13]
+          })
+        }).bindPopup(`
+          <div style="padding: 4px; font-size: 13px;">
+            <div style="font-weight: 700; color: #b06000; margin-bottom: 4px;">🚏 Bus Stop #${s.sequence}</div>
+            <div style="font-weight: 600; color: #202124;">${s.name}</div>
+            <div style="font-size: 11px; color: #5f6368; margin-top: 2px;">${Number(s.lat).toFixed(4)}, ${Number(s.lng).toFixed(4)}</div>
+          </div>
+        `).addTo(map);
+
+        plannedStopsLayers.push(stopMarker);
+      });
+    }
+  }
+
+  async function pollActiveRoute() {
+    try {
+      const res = await fetch("/api/routes/active");
+      if (res.ok) {
+        const route = await res.json();
+        renderActiveRoute(route);
+      }
+    } catch (e) {
+      // Quiet background sync
+    }
+  }
+
+  // ----------------------------------------------------
   // Network: Socket.IO Real-Time Stream
   // ----------------------------------------------------
   function initRealtimeStream() {
@@ -692,6 +827,11 @@
 
         socket.on("location_update", (loc) => {
           processLocationUpdate(loc);
+        });
+
+        // Bus drifted outside assigned route corridor
+        socket.on("bus_off_route", (data) => {
+          handleBusOffRoute(data);
         });
 
         socket.on("session_started", (data) => {
@@ -720,11 +860,34 @@
             }
           }
 
-          if (data && data.busLocation) {
+          if (data && data.activeRoute) {
+            renderActiveRoute(data.activeRoute);
+          }
+
+          if (data && data.isOffRoute) {
+            handleBusOffRoute(data);
+          } else if (data && data.busLocation) {
             processLocationUpdate(data.busLocation);
           } else {
             setStatusBadge("stopped", sessionStatus === "running" ? "WAITING FOR GPS" : "STOPPED");
             motionStatus.textContent = sessionStatus === "running" ? "Waiting for conductor GPS" : "Waiting for conductor to start";
+          }
+        });
+
+        // Listen for live route events emitted by the route editor
+        socket.on("route_activated", (route) => {
+          renderActiveRoute(route);
+        });
+
+        socket.on("route_updated", (route) => {
+          if (route && (route.isActive || (currentActiveRoute && currentActiveRoute.id === route.id))) {
+            renderActiveRoute(route);
+          }
+        });
+
+        socket.on("route_deleted", (data) => {
+          if (currentActiveRoute && currentActiveRoute.id === data.id) {
+            renderActiveRoute(null);
           }
         });
 
@@ -749,6 +912,11 @@
       const res = await fetch("/get-location");
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
+
+      if (data && data.isOffRoute) {
+        handleBusOffRoute(data);
+        return;
+      }
 
       if (!data || !data.hasLocation) {
         if (data && data.sessionStatus === "running") {
@@ -808,8 +976,10 @@
   // Automatic View-Only Initialization
   initMap();
   initRealtimeStream();
+  pollActiveRoute();
   pollLocation();
   setInterval(pollLocation, 3500); // Background safety sync
+  setInterval(pollActiveRoute, 10000); // Background route refresh
 </script>
 
 </body>

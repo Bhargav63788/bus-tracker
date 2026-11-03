@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Conductor Dashboard - GPS Bus Tracker</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
   <style>
     * {
       box-sizing: border-box;
@@ -26,13 +30,13 @@
     .card {
       background: #ffffff;
       width: 100%;
-      max-width: 460px;
+      max-width: 480px;
       border-radius: 20px;
       padding: 24px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.1);
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: 16px;
     }
 
     h1 {
@@ -50,6 +54,62 @@
       color: #5f6368;
       text-align: center;
       margin-top: -8px;
+    }
+
+    /* Route Selection Section */
+    .route-selection-box {
+      background: #f8fafd;
+      border: 1.5px solid #d2e3fc;
+      border-radius: 14px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .route-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #174ea6;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .route-dropdown {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #1a73e8;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      background: #ffffff;
+      color: #202124;
+      outline: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .route-dropdown:focus {
+      box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.2);
+    }
+
+    .route-meta-info {
+      font-size: 12px;
+      color: #5f6368;
+      display: flex;
+      justify-content: space-between;
+      padding-top: 4px;
+    }
+
+    /* Conductor Map */
+    #conductorMap {
+      height: 220px;
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid #dadce0;
+      overflow: hidden;
+      position: relative;
     }
 
     .status-bar {
@@ -132,10 +192,10 @@
       background: #f8f9fa;
       border: 1px solid #dadce0;
       border-radius: 12px;
-      padding: 16px;
+      padding: 14px 16px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 9px;
     }
 
     .metric-row {
@@ -152,7 +212,7 @@
 
     .metric-val {
       font-family: monospace;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 700;
       color: #202124;
     }
@@ -170,10 +230,10 @@
     .link-tracker {
       display: block;
       text-align: center;
-      margin-top: 6px;
+      margin-top: 4px;
       color: #1a73e8;
       font-weight: 600;
-      font-size: 14px;
+      font-size: 13px;
       text-decoration: none;
     }
 
@@ -182,14 +242,33 @@
     }
   </style>
 
-  <!-- Socket.IO Client Library -->
+  <!-- Leaflet JS & Socket.IO Client -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
 <div class="card">
   <h1><span>🚌</span> Conductor Dashboard</h1>
-  <p class="subtitle">Broadcast live mobile GPS for BUS-01 to passenger maps</p>
+  <p class="subtitle">Broadcast live mobile GPS strictly inside assigned route corridor</p>
+
+  <!-- Route Selection (Mandatory for Route-Restricted Tracking) -->
+  <div class="route-selection-box">
+    <label class="route-label" for="routeSelect">
+      <span>🛣️</span> <span>Assigned Bus Route:</span>
+    </label>
+    <select id="routeSelect" class="route-dropdown">
+      <option value="">Loading saved routes...</option>
+    </select>
+    <div id="routeMetaInfo" class="route-meta-info" style="display: none;">
+      <span id="metaDistance">-- km</span>
+      <span id="metaDuration">-- min</span>
+      <span id="metaStops">-- stops</span>
+    </div>
+  </div>
+
+  <!-- Interactive Conductor Map -->
+  <div id="conductorMap"></div>
 
   <!-- Live Status Bar -->
   <div class="status-bar" id="statusBar">
@@ -209,7 +288,23 @@
   <!-- Live Telemetry Stats -->
   <div class="metrics-box">
     <div class="metric-row">
-      <span class="metric-name">Latitude, Longitude:</span>
+      <span class="metric-name">Selected Route:</span>
+      <span class="metric-val" id="routeDisplay" style="color: #1a73e8;">--</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-name">Route Corridor Tolerance:</span>
+      <span class="metric-val" id="toleranceDisplay" style="color: #137333;">100 m</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-name">Distance to Route:</span>
+      <span class="metric-val" id="routeDistDisplay">--</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-name">Publishing State:</span>
+      <span class="metric-val" id="publishingDisplay" style="color: #5f6368;">Standby</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-name">GPS Coordinates:</span>
       <span class="metric-val" id="coordsDisplay">-- , --</span>
     </div>
     <div class="metric-row">
@@ -235,15 +330,18 @@
   </div>
 
   <div class="tip-box" id="tipBox">
-    💡 <strong>Note:</strong> When you click <strong>Start Tracking</strong>, your phone or laptop browser transmits actual GPS coordinates every 2–3 seconds while moving. Keep this screen on.
+    💡 <strong>Route-Restricted Tracking:</strong> GPS tracking will only begin and publish if you are within the 100m corridor of your assigned route. If you move off-route, publishing pauses immediately.
   </div>
 
-  <a href="/track.html" target="_blank" class="link-tracker">
-    🗺️ Open Passenger Live Map (View-Only)
+  <a href="/route-editor.html" target="_blank" class="link-tracker" style="color: #188038; font-weight: 700;">
+    🛣️ Visual Route Planner &amp; Stops Drawer
   </a>
 </div>
 
 <script>
+  // ----------------------------------------------------
+  // Conductor State
+  // ----------------------------------------------------
   let watchId = null;
   let transmissionTimer = null;
   let heartbeatTimer = null;
@@ -253,6 +351,25 @@
   let currentSessionId = null;
   let latestFix = null;
   let lastSentTimestamp = 0;
+
+  // Saved Routes State
+  let savedRoutes = [];
+  let selectedRoute = null;
+  const ROUTE_TOLERANCE_METERS = 100;
+
+  // Leaflet Map & Layer References
+  let map = null;
+  let routePolylineLayer = null;
+  let routeCorridorLayer = null;
+  let conductorMarker = null;
+  let stopsLayerGroup = null;
+
+  // DOM Elements
+  const routeSelect = document.getElementById("routeSelect");
+  const routeMetaInfo = document.getElementById("routeMetaInfo");
+  const metaDistance = document.getElementById("metaDistance");
+  const metaDuration = document.getElementById("metaDuration");
+  const metaStops = document.getElementById("metaStops");
 
   const btnStartTracking = document.getElementById("btnStartTracking");
   const btnStopTracking = document.getElementById("btnStopTracking");
@@ -264,9 +381,218 @@
   const packetsDisplay = document.getElementById("packetsDisplay");
   const sessionDisplay = document.getElementById("sessionDisplay");
   const connDisplay = document.getElementById("connDisplay");
+  const routeDisplay = document.getElementById("routeDisplay");
+  const toleranceDisplay = document.getElementById("toleranceDisplay");
+  const routeDistDisplay = document.getElementById("routeDistDisplay");
+  const publishingDisplay = document.getElementById("publishingDisplay");
   const tipBox = document.getElementById("tipBox");
 
-  // Initialize Socket.IO connection
+  // ----------------------------------------------------
+  // Leaflet Map Initialization
+  // ----------------------------------------------------
+  function initConductorMap() {
+    map = L.map("conductorMap", {
+      center: [13.4, 74.7], // Default Karnataka coast region
+      zoom: 10,
+      zoomControl: false,
+      attributionControl: false
+    });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19
+    }).addTo(map);
+
+    stopsLayerGroup = L.layerGroup().addTo(map);
+  }
+
+  // ----------------------------------------------------
+  // Geodesic Math: Distance from GPS Point to Route
+  // ----------------------------------------------------
+  function toRad(deg) {
+    return (deg * Math.PI) / 180;
+  }
+
+  function distancePointToSegmentM(pLat, pLng, aLat, aLng, bLat, bLng) {
+    const R = 6371000;
+    const midLat = toRad((aLat + bLat) / 2);
+    const cosMid = Math.cos(midLat);
+
+    const dx = toRad(bLng - aLng) * cosMid * R;
+    const dy = toRad(bLat - aLat) * R;
+
+    const px = toRad(pLng - aLng) * cosMid * R;
+    const py = toRad(pLat - aLat) * R;
+
+    const segLenSq = dx * dx + dy * dy;
+    if (segLenSq < 1e-6) {
+      return Math.hypot(px, py);
+    }
+
+    let t = (px * dx + py * dy) / segLenSq;
+    t = Math.max(0, Math.min(1, t));
+
+    const projX = t * dx;
+    const projY = t * dy;
+
+    return Math.hypot(px - projX, py - projY);
+  }
+
+  function getDistanceToRouteMeters(lat, lng, geometry) {
+    if (!geometry || geometry.length < 2) return Infinity;
+    let minDist = Infinity;
+    for (let i = 0; i < geometry.length - 1; i++) {
+      const d = distancePointToSegmentM(
+        lat,
+        lng,
+        geometry[i][0],
+        geometry[i][1],
+        geometry[i + 1][0],
+        geometry[i + 1][1]
+      );
+      if (d < minDist) minDist = d;
+    }
+    return minDist;
+  }
+
+  // ----------------------------------------------------
+  // Load and Render Saved Routes
+  // ----------------------------------------------------
+  async function loadSavedRoutes() {
+    try {
+      const res = await fetch("/api/routes");
+      if (!res.ok) throw new Error("Could not fetch routes");
+      savedRoutes = await res.json();
+
+      routeSelect.innerHTML = `<option value="">-- Choose Assigned Bus Route --</option>`;
+
+      if (savedRoutes.length === 0) {
+        routeSelect.innerHTML = `<option value="">No routes found. Draw one in Route Planner!</option>`;
+        return;
+      }
+
+      let activeRouteObj = null;
+
+      savedRoutes.forEach((r) => {
+        const opt = document.createElement("option");
+        opt.value = r.id;
+        opt.textContent = `${r.name} (${Number(r.distanceKm || 0).toFixed(1)} km)`;
+        if (r.isActive) {
+          opt.selected = true;
+          activeRouteObj = r;
+        }
+        routeSelect.appendChild(opt);
+      });
+
+      // Default to active route, or first route if none active
+      if (!activeRouteObj && savedRoutes.length > 0) {
+        activeRouteObj = savedRoutes[0];
+        routeSelect.value = activeRouteObj.id;
+      }
+
+      if (activeRouteObj) {
+        onRouteSelected(activeRouteObj.id);
+      }
+    } catch (err) {
+      console.warn("Error loading routes:", err);
+      routeSelect.innerHTML = `<option value="">Error loading routes (${err.message})</option>`;
+    }
+  }
+
+  function onRouteSelected(routeId) {
+    const route = savedRoutes.find((r) => r.id === routeId);
+    if (!route) {
+      selectedRoute = null;
+      routeDisplay.textContent = "None";
+      routeMetaInfo.style.display = "none";
+      if (routePolylineLayer) map.removeLayer(routePolylineLayer);
+      if (routeCorridorLayer) map.removeLayer(routeCorridorLayer);
+      return;
+    }
+
+    selectedRoute = route;
+    routeDisplay.textContent = route.name;
+    routeMetaInfo.style.display = "flex";
+    metaDistance.textContent = `${Number(route.distanceKm || 0).toFixed(1)} km`;
+    metaDuration.textContent = `${route.durationMin || 0} min`;
+    metaStops.textContent = `${(route.stops || []).length} stops`;
+
+    // Render route on conductor map
+    if (routePolylineLayer) map.removeLayer(routePolylineLayer);
+    if (routeCorridorLayer) map.removeLayer(routeCorridorLayer);
+    stopsLayerGroup.clearLayers();
+
+    if (route.geometry && route.geometry.length > 0) {
+      // 1. Draw corridor tolerance buffer (visual representation of 100m corridor)
+      routeCorridorLayer = L.polyline(route.geometry, {
+        color: "#4285f4",
+        weight: 18,
+        opacity: 0.22,
+        lineCap: "round",
+        lineJoin: "round"
+      }).addTo(map);
+
+      // 2. Draw solid route polyline
+      routePolylineLayer = L.polyline(route.geometry, {
+        color: "#1a73e8",
+        weight: 4,
+        opacity: 0.95,
+        lineCap: "round",
+        lineJoin: "round"
+      }).addTo(map);
+
+      // 3. Draw stops
+      (route.stops || []).forEach((s) => {
+        L.marker([s.lat, s.lng], {
+          icon: L.divIcon({
+            className: "stop-icon",
+            html: `<div style="background: #f9ab00; border: 2px solid #fff; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: #202124;">🚏</div>`,
+            iconSize: [18, 18],
+            iconAnchor: [9, 9]
+          })
+        }).bindPopup(`<b>${s.name}</b>`).addTo(stopsLayerGroup);
+      });
+
+      // Fit map to route
+      map.fitBounds(routePolylineLayer.getBounds(), { padding: [25, 25] });
+    }
+  }
+
+  routeSelect.addEventListener("change", (e) => {
+    onRouteSelected(e.target.value);
+  });
+
+  // ----------------------------------------------------
+  // Conductor Position Marker Styling
+  // ----------------------------------------------------
+  function updateConductorMarker(lat, lng, isWithin) {
+    const pinColor = isWithin ? "#188038" : "#d93025";
+    const haloColor = isWithin ? "rgba(24, 128, 56, 0.25)" : "rgba(217, 48, 37, 0.25)";
+
+    const iconHtml = `
+      <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+        <div style="position: absolute; width: 30px; height: 30px; border-radius: 50%; background: ${haloColor};"></div>
+        <div style="width: 20px; height: 20px; border-radius: 50%; background: ${pinColor}; border: 3px solid #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.35);"></div>
+      </div>
+    `;
+
+    const customIcon = L.divIcon({
+      className: "conductor-pin",
+      html: iconHtml,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+
+    if (!conductorMarker) {
+      conductorMarker = L.marker([lat, lng], { icon: customIcon, zIndexOffset: 1000 }).addTo(map);
+    } else {
+      conductorMarker.setLatLng([lat, lng]);
+      conductorMarker.setIcon(customIcon);
+    }
+  }
+
+  // ----------------------------------------------------
+  // Real-Time Socket.IO Stream
+  // ----------------------------------------------------
   let socket = null;
   try {
     if (typeof io !== "undefined") {
@@ -274,6 +600,16 @@
       socket.on("connect", () => {
         connDisplay.textContent = "Connected (Real-Time)";
         connDisplay.style.color = "#188038";
+      });
+      socket.on("state_init", (data) => {
+        if (data && data.activeRoute) {
+          if (!selectedRoute) onRouteSelected(data.activeRoute.id);
+        }
+      });
+      socket.on("route_activated", (route) => {
+        if (route && (!selectedRoute || selectedRoute.id === route.id)) {
+          onRouteSelected(route.id);
+        }
       });
       socket.on("disconnect", () => {
         connDisplay.textContent = "Disconnected (Reconnecting...)";
@@ -291,7 +627,9 @@
     connDisplay.textContent = "HTTP REST Mode";
   }
 
-  // Request screen wake lock so mobile phone doesn't sleep in transit
+  // ----------------------------------------------------
+  // Wake Lock for Mobile Screen
+  // ----------------------------------------------------
   async function acquireWakeLock() {
     try {
       if ("wakeLock" in navigator) {
@@ -312,10 +650,17 @@
     }
   }
 
-  // Transmit the latest GPS coordinate to backend
+  // ----------------------------------------------------
+  // Continuous Location Transmission & Route Validation
+  // ----------------------------------------------------
   async function transmitLocation(payload) {
     if (!payload || typeof payload.lat !== "number" || typeof payload.lng !== "number") {
       return;
+    }
+
+    // Attach route ID
+    if (selectedRoute) {
+      payload.routeId = selectedRoute.id;
     }
 
     try {
@@ -330,17 +675,38 @@
 
       packetsCount++;
       packetsDisplay.textContent = packetsCount;
-      statusBar.className = "status-bar transmitting";
-      statusText.textContent = "🟢 LIVE: Broadcasting Real-Time GPS";
 
       coordsDisplay.textContent = payload.lat.toFixed(5) + ", " + payload.lng.toFixed(5);
       accuracyDisplay.textContent = (payload.accuracy ? "±" + Math.round(payload.accuracy) : "--") + " m";
       speedDisplay.textContent = (payload.speed ? Math.round(payload.speed) : 0) + " km/h";
 
+      const distMeters = typeof data.distanceToRouteMeters === "number" ? Math.round(data.distanceToRouteMeters) : null;
+      if (distMeters !== null) {
+        routeDistDisplay.textContent = `${distMeters} m`;
+      }
+
       if (data.sessionId) {
         currentSessionId = data.sessionId;
         sessionDisplay.textContent = currentSessionId.slice(-8);
       }
+
+      // Check whether backend verified point as on-route or off-route
+      if (data.isOffRoute) {
+        statusBar.className = "status-bar error";
+        statusText.textContent = "⚠️ OFF ROUTE: Location publishing paused";
+        publishingDisplay.textContent = "PAUSED (Off Route - Location Hidden)";
+        publishingDisplay.style.color = "#d93025";
+        updateConductorMarker(payload.lat, payload.lng, false);
+
+        tipBox.innerHTML = `⚠️ <strong>Off-Route Warning:</strong> You are currently <strong>${distMeters || '> 100'}m</strong> away from ${selectedRoute.name}. Move back into the route corridor to resume broadcasting to passengers.`;
+      } else {
+        statusBar.className = "status-bar transmitting";
+        statusText.textContent = `🟢 ON ROUTE: Broadcasting Live GPS (${distMeters || 0}m)`;
+        publishingDisplay.textContent = "LIVE (Broadcasting to Passengers)";
+        publishingDisplay.style.color = "#188038";
+        updateConductorMarker(payload.lat, payload.lng, true);
+      }
+
       lastSentTimestamp = Date.now();
     } catch (err) {
       statusBar.className = "status-bar error";
@@ -364,12 +730,19 @@
       speed: speedKmH,
       heading: headingDeg,
       busId: "BUS-01",
+      routeId: selectedRoute ? selectedRoute.id : null,
       source: "conductor_mobile",
       sessionId: currentSessionId,
       timestamp: pos.timestamp || Date.now()
     };
 
-    // If never sent yet, send first fix immediately
+    // Calculate local distance to route for instant UI feedback
+    if (selectedRoute && selectedRoute.geometry) {
+      const localDist = Math.round(getDistanceToRouteMeters(coords.latitude, coords.longitude, selectedRoute.geometry));
+      routeDistDisplay.textContent = `${localDist} m`;
+      updateConductorMarker(coords.latitude, coords.longitude, localDist <= ROUTE_TOLERANCE_METERS);
+    }
+
     if (isTracking && lastSentTimestamp === 0) {
       transmitLocation(latestFix);
     }
@@ -389,73 +762,133 @@
     }
   }
 
+  // ----------------------------------------------------
+  // Start Tracking (With Strict Route Verification)
+  // ----------------------------------------------------
   async function startTracking() {
+    if (!selectedRoute) {
+      alert("⚠️ Please select an assigned bus route from the dropdown first.");
+      return;
+    }
+
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser");
       return;
     }
 
-    isTracking = true;
-    lastSentTimestamp = 0;
-    packetsCount = 0;
-    packetsDisplay.textContent = "0";
-
     btnStartTracking.disabled = true;
-    btnStopTracking.disabled = false;
     statusBar.className = "status-bar";
-    statusText.textContent = "🔍 Initializing fresh tracking session...";
+    statusText.textContent = "🔍 Verifying your location on assigned route...";
 
-    acquireWakeLock();
-
-    // 1. Notify backend to start a fresh tracking session
-    try {
-      const res = await fetch("/start-session", { method: "POST" });
-      const data = await res.json();
-      currentSessionId = data.sessionId;
-      sessionDisplay.textContent = currentSessionId.slice(-8);
-    } catch (e) {
-      console.warn("Could not start session via REST:", e);
-    }
-
-    // 2. Request fast initial position fix
+    // 1. Get current GPS position to verify if conductor is inside route
     navigator.geolocation.getCurrentPosition(
-      onLocationSuccess,
-      (err) => console.warn("Initial fix warning:", err.message),
-      { enableHighAccuracy: true, timeout: 10000 }
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const acc = pos.coords.accuracy;
+
+        // Perform instant client-side distance check
+        const distMeters = Math.round(getDistanceToRouteMeters(lat, lng, selectedRoute.geometry));
+        routeDistDisplay.textContent = `${distMeters} m`;
+        coordsDisplay.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+        accuracyDisplay.textContent = `±${Math.round(acc)} m`;
+
+        updateConductorMarker(lat, lng, distMeters <= ROUTE_TOLERANCE_METERS);
+        map.setView([lat, lng], 15);
+
+        // 2. Request backend verification & session creation
+        try {
+          const res = await fetch("/start-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              routeId: selectedRoute.id,
+              lat,
+              lng,
+              accuracy: acc
+            })
+          });
+
+          const data = await res.json();
+
+          // If conductor is OUTSIDE the route, BLOCK tracking start!
+          if (!res.ok || data.error) {
+            btnStartTracking.disabled = false;
+            btnStopTracking.disabled = true;
+            statusBar.className = "status-bar error";
+            statusText.textContent = "❌ You are outside the selected bus route. Move to the route to start tracking.";
+            publishingDisplay.textContent = "BLOCKED (Outside Route)";
+            publishingDisplay.style.color = "#d93025";
+
+            tipBox.innerHTML = `⚠️ <strong>Outside Selected Route:</strong> You are currently <strong>${data.distanceMeters || distMeters}m</strong> away from <strong>${selectedRoute.name}</strong>. Maximum permitted tolerance is ${ROUTE_TOLERANCE_METERS}m.<br><br>Please move to the route corridor before pressing <strong>Start Tracking</strong>.`;
+            return;
+          }
+
+          // Conductor is ON-ROUTE: Start live tracking!
+          isTracking = true;
+          currentSessionId = data.sessionId;
+          sessionDisplay.textContent = currentSessionId.slice(-8);
+
+          btnStopTracking.disabled = false;
+          routeSelect.disabled = true; // Lock route dropdown while tracking
+          statusBar.className = "status-bar transmitting";
+          statusText.textContent = "🟢 ON ROUTE: Live GPS broadcasting to passengers";
+          publishingDisplay.textContent = "LIVE (Broadcasting to Passengers)";
+          publishingDisplay.style.color = "#188038";
+
+          acquireWakeLock();
+
+          // Start continuous GPS tracking
+          watchId = navigator.geolocation.watchPosition(
+            onLocationSuccess,
+            onLocationError,
+            {
+              enableHighAccuracy: true,
+              maximumAge: 0,
+              timeout: 15000
+            }
+          );
+
+          // Transmit initial position immediately
+          onLocationSuccess(pos);
+
+          // Cadenced transmission loop (every 2.5s)
+          if (transmissionTimer) clearInterval(transmissionTimer);
+          transmissionTimer = setInterval(() => {
+            if (isTracking && latestFix) {
+              transmitLocation(latestFix);
+            }
+          }, 2500);
+
+          // Watchdog timer
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
+          heartbeatTimer = setInterval(() => {
+            if (isTracking) {
+              navigator.geolocation.getCurrentPosition(
+                onLocationSuccess,
+                () => {},
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+              );
+            }
+          }, 10000);
+
+        } catch (err) {
+          btnStartTracking.disabled = false;
+          statusBar.className = "status-bar error";
+          statusText.textContent = "⚠️ Server connection error: " + err.message;
+        }
+      },
+      (err) => {
+        btnStartTracking.disabled = false;
+        onLocationError(err);
+      },
+      { enableHighAccuracy: true, timeout: 12000 }
     );
-
-    // 3. Start continuous watchPosition
-    watchId = navigator.geolocation.watchPosition(
-      onLocationSuccess,
-      onLocationError,
-      {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 15000
-      }
-    );
-
-    // 4. Cadenced transmission loop: sends updates to Render every 2.5 - 3 seconds
-    if (transmissionTimer) clearInterval(transmissionTimer);
-    transmissionTimer = setInterval(() => {
-      if (isTracking && latestFix) {
-        transmitLocation(latestFix);
-      }
-    }, 2800);
-
-    // 5. Watchdog timer: forces getCurrentPosition if watchPosition stalls on mobile
-    if (heartbeatTimer) clearInterval(heartbeatTimer);
-    heartbeatTimer = setInterval(() => {
-      if (isTracking) {
-        navigator.geolocation.getCurrentPosition(
-          onLocationSuccess,
-          () => {},
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
-        );
-      }
-    }, 10000);
   }
 
+  // ----------------------------------------------------
+  // Stop Tracking
+  // ----------------------------------------------------
   async function stopTracking() {
     isTracking = false;
 
@@ -476,10 +909,12 @@
 
     btnStartTracking.disabled = false;
     btnStopTracking.disabled = true;
+    routeSelect.disabled = false; // Re-enable route switching
     statusBar.className = "status-bar";
-    statusText.textContent = "⚪ Tracking Stopped (Finished)";
+    statusText.textContent = "⚪ Tracking Stopped";
+    publishingDisplay.textContent = "Stopped";
+    publishingDisplay.style.color = "#5f6368";
 
-    // Notify backend that session is complete
     try {
       await fetch("/stop-session", { method: "POST" });
     } catch (e) {
@@ -490,22 +925,9 @@
   btnStartTracking.addEventListener("click", startTracking);
   btnStopTracking.addEventListener("click", stopTracking);
 
-  // Sync state on load
-  fetch("/get-location")
-    .then(r => r.json())
-    .then(data => {
-      if (data && data.sessionStatus === "running") {
-        btnStartTracking.disabled = true;
-        btnStopTracking.disabled = false;
-        statusBar.className = "status-bar transmitting";
-        statusText.textContent = "🟢 LIVE: Active Session in Progress";
-        if (data.sessionId) {
-          currentSessionId = data.sessionId;
-          sessionDisplay.textContent = currentSessionId.slice(-8);
-        }
-      }
-    })
-    .catch(() => {});
+  // Initialize Conductor Dashboard
+  initConductorMap();
+  loadSavedRoutes();
 </script>
 
 </body>

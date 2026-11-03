@@ -6,6 +6,22 @@ A real-time transit tracking system built with Node.js, Express, Leaflet, and st
 
 ## 🌟 Features
 
+- **Map-Based Visual Route Drawing System**:
+  - Full-screen interactive Leaflet OpenStreetMap canvas (`/route-editor.html`).
+  - **Click-to-Draw**: Draw entire routes directly by clicking along roads without manually typing addresses or searching stops.
+  - **OSRM Road Snapping**: Points automatically snap into true road geometry curves instead of straight lines.
+  - **Dynamic Route Manipulation**: Drag route waypoints to adjust curves or click on the route polyline to bend it with intermediate points.
+  - **Designated Bus Stops**: Click anywhere along the route to drop bus stops (🚏) with automatic sequencing and renaming.
+  - **Undo / Redo & Keyboard Shortcuts**: Full `Ctrl+Z` (Undo) and `Ctrl+Y` (Redo) history tracking.
+  - **Automated Distance & Travel Time**: Dynamically computes total kilometers and estimated travel duration.
+  - **Route Persistence & Editing**: Save routes to persistent backend storage (`data/routes.json`), load saved routes to edit them, or activate a route for live tracking.
+  - **Unified Live Sync**: The active planned route and bus stops are displayed directly on the passenger map (`/track.html`) and conductor dashboard (`/conductor.html`).
+- **Strict Route-Restricted GPS Tracking**:
+  - **Route Assignment**: The conductor selects the assigned route from saved routes directly on the conductor dashboard (`conductor.html`).
+  - **Start Restriction**: Tracking can ONLY be started if the conductor is physically on or within the permitted corridor (default 100m) of the selected route. If outside, tracking is strictly blocked with: `"You are outside the selected bus route. Move to the route to start tracking."`
+  - **Continuous Route Validation**: Distance from the bus GPS position to the route geometry is calculated in real time.
+  - **Automatic Passenger Privacy Shielding**: If the bus departs from the permitted corridor (>100m away), live coordinate publishing is paused immediately. Passengers are notified with `OFF ROUTE` status and the bus marker is hidden. **Off-route GPS coordinates are never broadcast or exposed.**
+  - **Auto-Resume**: When the bus returns within the permitted route corridor, location broadcasting resumes automatically.
 - **Browser-Native GPS Tracking**: Uses the standard JavaScript `navigator.geolocation.watchPosition()` API on the conductor's mobile phone or laptop browser. No external GPS hardware, Arduino, or serial chips required.
 - **Conductor-Only Control**: Only the conductor has access to **Start Tracking** and **Stop Tracking** controls on the dedicated conductor dashboard.
 - **Automated Passenger Live Map**: Passengers view the bus's live location automatically on their map. No buttons or page refreshes needed.
@@ -42,9 +58,26 @@ npm start
 The server will start at: **`http://localhost:3000`**
 
 ### 3. Open in Your Browser
+- **Visual Route Planner:** [http://localhost:3000/route-editor.html](http://localhost:3000/route-editor.html)
 - **Passenger Live Map:** [http://localhost:3000/track.html](http://localhost:3000/track.html)
 - **Conductor Dashboard:** [http://localhost:3000/conductor.html](http://localhost:3000/conductor.html)
 - **API Status:** [http://localhost:3000/api/status](http://localhost:3000/api/status)
+
+---
+
+## 🗺️ How to Use the Visual Route Drawing System
+
+1. Open [http://localhost:3000/route-editor.html](http://localhost:3000/route-editor.html).
+2. Click **Start Drawing Route** (the map cursor switches to a crosshair).
+3. Click anywhere along the roads on the map to place waypoints:
+   - First click places the **Origin** (🏁 green pin).
+   - Second and subsequent clicks place road points and automatically snap the route along real roads using OSRM!
+   - Last click becomes the **Destination** (🎯 red pin).
+4. **Drag & Bend Waypoints**: Click and drag any pin to adjust the route around curves, or click directly on the blue road line to insert a bend point.
+5. **Drop Bus Stops**: Click **Add Bus Stops** mode and click along the route to place designated bus stops (🚏). Click a stop marker to rename it or delete it.
+6. **Undo / Redo**: Use the toolbar buttons or `Ctrl+Z` / `Ctrl+Y` keyboard shortcuts.
+7. Click **Finish & Save**: Review the distance, estimated duration, and stops preview. Check "Set as Active Route" and click **Save Route to Database**.
+8. Open the **Saved Routes (📁)** drawer at any time to load, edit, activate, or delete existing routes.
 
 ---
 
@@ -72,6 +105,7 @@ The server will start at: **`http://localhost:3000`**
 |---|---|---|
 | `PORT` | `3000` | Port for the Express server (Render injects this automatically). |
 | `GPS_API_KEY` | *(None / Empty)* | Optional secret key for securing `/update-location`. |
+| `ROUTE_TOLERANCE_METERS` | `100` | Maximum distance (meters) the bus can deviate from the route geometry before publishing is paused. |
 
 ---
 

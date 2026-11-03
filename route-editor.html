@@ -1,0 +1,1670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Map-Based Visual Route Planner - Bus Tracker</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #202124;
+      background: #e8eaed;
+      overflow: hidden;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    #map.drawing-mode {
+      cursor: crosshair !important;
+    }
+
+    #map.stop-mode {
+      cursor: cell !important;
+    }
+
+    /* Top Navigation & Toolbar Bar */
+    .top-toolbar {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      max-width: 960px;
+      margin: 0 auto;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-radius: 24px;
+      padding: 10px 18px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-tag {
+      background: #1a73e8;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 5px 12px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .title-col {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .title-col h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #202124;
+    }
+
+    .title-col span {
+      font-size: 11px;
+      color: #5f6368;
+    }
+
+    /* Action Buttons in Toolbar */
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .btn-action {
+      background: #ffffff;
+      border: 1px solid #dadce0;
+      border-radius: 10px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #3c4043;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+
+    .btn-action:hover:not(:disabled) {
+      background: #f8f9fa;
+      color: #1a73e8;
+      border-color: #1a73e8;
+    }
+
+    .btn-action:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .btn-primary-draw {
+      background: #1a73e8;
+      color: #ffffff;
+      border-color: #1a73e8;
+      box-shadow: 0 2px 8px rgba(26, 115, 232, 0.35);
+    }
+
+    .btn-primary-draw:hover {
+      background: #1557b0;
+      color: #ffffff;
+    }
+
+    .btn-primary-draw.active {
+      background: #d93025;
+      border-color: #d93025;
+      animation: pulse-border 1.5s infinite;
+    }
+
+    @keyframes pulse-border {
+      0% { box-shadow: 0 0 0 0 rgba(217, 48, 37, 0.4); }
+      70% { box-shadow: 0 0 0 8px rgba(217, 48, 37, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(217, 48, 37, 0); }
+    }
+
+    .btn-stop-mode {
+      background: #fef7e0;
+      border-color: #f9ab00;
+      color: #b06000;
+    }
+
+    .btn-stop-mode.active {
+      background: #f9ab00;
+      color: #ffffff;
+      border-color: #f9ab00;
+    }
+
+    .btn-finish {
+      background: #188038;
+      color: #ffffff;
+      border-color: #188038;
+    }
+
+    .btn-finish:hover:not(:disabled) {
+      background: #137333;
+      color: #ffffff;
+    }
+
+    /* Floating Route Stats Card */
+    .stats-card {
+      position: absolute;
+      bottom: 24px;
+      left: 16px;
+      right: 16px;
+      max-width: 580px;
+      margin: 0 auto;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-radius: 18px;
+      padding: 16px 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .stats-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #edf0f2;
+    }
+
+    .route-info-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #202124;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      text-align: center;
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #5f6368;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a73e8;
+    }
+
+    .route-hint {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #edf0f2;
+      font-size: 12px;
+      color: #5f6368;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    /* Floating Map Tool Controls (Right) */
+    .map-controls-panel {
+      position: absolute;
+      right: 16px;
+      top: 96px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn-ctrl {
+      background: #ffffff;
+      border: 1px solid #dadce0;
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #3c4043;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      outline: none;
+      transition: all 0.2s;
+      user-select: none;
+    }
+
+    .btn-ctrl:hover {
+      background: #f8f9fa;
+      color: #1a73e8;
+    }
+
+    .btn-ctrl.active {
+      background: #1a73e8;
+      color: #ffffff;
+      border-color: #1a73e8;
+    }
+
+    /* Custom Leaflet Marker Badges */
+    .custom-marker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .waypoint-pin {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #1a73e8;
+      color: #ffffff;
+      border: 2px solid #ffffff;
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      cursor: grab;
+    }
+
+    .waypoint-pin.start-pin {
+      background: #188038;
+      width: 34px;
+      height: 34px;
+      font-size: 14px;
+      border: 3px solid #ffffff;
+    }
+
+    .waypoint-pin.dest-pin {
+      background: #d93025;
+      width: 34px;
+      height: 34px;
+      font-size: 14px;
+      border: 3px solid #ffffff;
+    }
+
+    .stop-pin {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #f9ab00;
+      color: #202124;
+      border: 2px solid #ffffff;
+      font-size: 14px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      cursor: grab;
+    }
+
+    /* Modal Styles */
+    .modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.45);
+      backdrop-filter: blur(4px);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-card {
+      background: #ffffff;
+      border-radius: 20px;
+      width: 100%;
+      max-width: 540px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      overflow: hidden;
+      animation: modal-enter 0.25s ease-out;
+    }
+
+    @keyframes modal-enter {
+      from { transform: scale(0.92); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .modal-header {
+      padding: 18px 24px;
+      border-bottom: 1px solid #edf0f2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-header h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #202124;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .modal-body {
+      padding: 20px 24px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #3c4043;
+    }
+
+    .form-input {
+      padding: 10px 14px;
+      border: 1px solid #dadce0;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #202124;
+      outline: none;
+      transition: border 0.2s;
+    }
+
+    .form-input:focus {
+      border-color: #1a73e8;
+      box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+    }
+
+    .preview-summary {
+      background: #f8f9fa;
+      border: 1px solid #e8eaed;
+      border-radius: 12px;
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .stops-list-preview {
+      border: 1px solid #e8eaed;
+      border-radius: 10px;
+      max-height: 160px;
+      overflow-y: auto;
+      padding: 6px 12px;
+    }
+
+    .stop-preview-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #f1f3f4;
+      font-size: 13px;
+    }
+
+    .stop-preview-item:last-child {
+      border-bottom: none;
+    }
+
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid #edf0f2;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    /* Saved Routes Drawer */
+    .drawer-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(2px);
+      z-index: 1500;
+      display: none;
+    }
+
+    .drawer-panel {
+      position: fixed;
+      top: 0;
+      right: -420px;
+      width: 100%;
+      max-width: 420px;
+      height: 100%;
+      background: #ffffff;
+      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.2);
+      z-index: 1600;
+      display: flex;
+      flex-direction: column;
+      transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .drawer-panel.open {
+      right: 0;
+    }
+
+    .drawer-header {
+      padding: 20px;
+      border-bottom: 1px solid #edf0f2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .drawer-body {
+      padding: 16px 20px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .route-card-item {
+      border: 1px solid #dadce0;
+      border-radius: 12px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border 0.2s, box-shadow 0.2s;
+    }
+
+    .route-card-item:hover {
+      border-color: #1a73e8;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .route-card-item.active-route {
+      border-color: #188038;
+      background: #f6fcf8;
+    }
+
+    .route-card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #202124;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .route-meta {
+      font-size: 12px;
+      color: #5f6368;
+      display: flex;
+      gap: 10px;
+    }
+
+    .route-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .btn-small {
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      border: 1px solid #dadce0;
+      background: #ffffff;
+      cursor: pointer;
+    }
+
+    .btn-small:hover {
+      background: #f1f3f4;
+    }
+
+    .btn-small.btn-primary {
+      background: #1a73e8;
+      color: #ffffff;
+      border-color: #1a73e8;
+    }
+
+    .btn-small.btn-success {
+      background: #188038;
+      color: #ffffff;
+      border-color: #188038;
+    }
+
+    .btn-small.btn-danger {
+      color: #d93025;
+      border-color: #fce8e6;
+    }
+
+    .btn-small.btn-danger:hover {
+      background: #fce8e6;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Top Toolbar Navigation -->
+<div class="top-toolbar">
+  <div class="brand-section">
+    <div class="brand-tag">🗺️ Route Planner</div>
+    <div class="title-col">
+      <h1 id="plannerTitle">Visual Road Route Creator</h1>
+      <span id="plannerStatus">Click "Start Drawing Route" and click along roads</span>
+    </div>
+  </div>
+
+  <div class="toolbar-actions">
+    <!-- Main Drawing Toggle -->
+    <button class="btn-action btn-primary-draw" id="btnToggleDraw">
+      <span>✏️</span> <span id="drawBtnText">Start Drawing Route</span>
+    </button>
+
+    <!-- Add Bus Stops Mode Toggle -->
+    <button class="btn-action btn-stop-mode" id="btnToggleStops" title="Click on route to add designated bus stops">
+      <span>🚏</span> <span>Add Bus Stops</span>
+    </button>
+
+    <!-- Undo / Redo -->
+    <button class="btn-action" id="btnUndo" title="Undo last action (Ctrl+Z)" disabled>
+      <span>↶</span> <span>Undo</span>
+    </button>
+    <button class="btn-action" id="btnRedo" title="Redo action (Ctrl+Y)" disabled>
+      <span>↷</span> <span>Redo</span>
+    </button>
+
+    <!-- Clear Canvas -->
+    <button class="btn-action" id="btnClear" title="Clear current route canvas">
+      <span>🗑️</span> <span>Clear</span>
+    </button>
+
+    <!-- Finish / Save Route -->
+    <button class="btn-action btn-finish" id="btnFinish" title="Preview and save route" disabled>
+      <span>💾</span> <span>Finish & Save</span>
+    </button>
+
+    <!-- Saved Routes Drawer -->
+    <button class="btn-action" id="btnOpenSaved" title="View previously saved routes">
+      <span>📁</span> <span>Saved Routes (<span id="savedCountBadge">0</span>)</span>
+    </button>
+  </div>
+</div>
+
+<!-- Floating Action Tools (Right) -->
+<div class="map-controls-panel">
+  <button class="btn-ctrl" id="btnSatellite" title="Toggle Satellite / Street View">
+    <span>🛰️</span> <span id="satText">Satellite View</span>
+  </button>
+  <button class="btn-ctrl" id="btnFitRoute" title="Fit entire route on map">
+    <span>🎯</span> <span>Fit Route</span>
+  </button>
+  <button class="btn-ctrl" id="btnZoomIn" style="justify-content: center;">➕</button>
+  <button class="btn-ctrl" id="btnZoomOut" style="justify-content: center;">➖</button>
+  <a href="/track.html" class="btn-ctrl" style="text-decoration: none;" title="Go to Passenger Live Tracking Map">
+    <span>🚌</span> <span>Live Map</span>
+  </a>
+</div>
+
+<!-- Bottom Route Stats Bar -->
+<div class="stats-card">
+  <div class="stats-header">
+    <div class="route-info-title">
+      <span>🛣️</span> <span id="displayRouteName">Unsaved Route</span>
+    </div>
+    <div id="routeModeBadge" style="font-size: 12px; font-weight: 700; color: #1a73e8;">
+      Mode: Viewing
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-item">
+      <span class="stat-label">Total Distance</span>
+      <span class="stat-value" id="statDistance">0.0 km</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Est. Duration</span>
+      <span class="stat-value" id="statDuration">0 min</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Waypoints</span>
+      <span class="stat-value" id="statWaypoints">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-label">Bus Stops</span>
+      <span class="stat-value" id="statStops">0</span>
+    </div>
+  </div>
+
+  <div class="route-hint">
+    <span id="routeHintText">💡 Click <strong>Start Drawing Route</strong> then click roads on the map to build your route.</span>
+    <span id="startEndText" style="font-weight: 600; color: #188038;">Start: -- | Dest: --</span>
+  </div>
+</div>
+
+<!-- Finish / Save Route Modal -->
+<div class="modal-backdrop" id="saveModal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2><span>💾</span> Save Bus Route</h2>
+      <button class="btn-action" id="btnCloseModal" style="padding: 4px 8px;">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label" for="routeNameInput">Route Name / Number *</label>
+        <input type="text" id="routeNameInput" class="form-input" placeholder="e.g. Route 42: Electronic City Express" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="routeDescInput">Route Description / Corridor</label>
+        <input type="text" id="routeDescInput" class="form-input" placeholder="e.g. Via Silk Board and Hosur Road Elevated Expressway">
+      </div>
+
+      <div class="preview-summary">
+        <div>
+          <div style="font-size: 11px; color: #5f6368; font-weight: 600;">TOTAL DISTANCE</div>
+          <div style="font-size: 16px; font-weight: 700; color: #1a73e8;" id="modalDistance">0.0 km</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: #5f6368; font-weight: 600;">EST. TRAVEL TIME</div>
+          <div style="font-size: 16px; font-weight: 700; color: #188038;" id="modalDuration">0 min</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: #5f6368; font-weight: 600;">START (ORIGIN)</div>
+          <div style="font-size: 13px; font-weight: 700; color: #202124;" id="modalStart">Point 1</div>
+        </div>
+        <div>
+          <div style="font-size: 11px; color: #5f6368; font-weight: 600;">DESTINATION</div>
+          <div style="font-size: 13px; font-weight: 700; color: #202124;" id="modalDest">Point N</div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Marked Bus Stops (<span id="modalStopsCount">0</span>)</label>
+        <div class="stops-list-preview" id="modalStopsList">
+          <div style="color: #5f6368; font-size: 13px;">No bus stops marked yet. (You can mark stops using the "Add Bus Stops" button)</div>
+        </div>
+      </div>
+
+      <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px;">
+        <input type="checkbox" id="checkSetActive" style="width: 18px; height: 18px; cursor: pointer;">
+        <label for="checkSetActive" style="font-size: 13px; font-weight: 600; cursor: pointer;">
+          Set as Active Route on Live Bus Tracker
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-action" id="btnCancelSave">Keep Editing</button>
+      <button class="btn-action btn-finish" id="btnConfirmSave">Save Route to Database</button>
+    </div>
+  </div>
+</div>
+
+<!-- Saved Routes Drawer -->
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<div class="drawer-panel" id="savedDrawer">
+  <div class="drawer-header">
+    <h2 style="font-size: 17px; font-weight: 700;">📁 Saved Bus Routes</h2>
+    <button class="btn-action" id="btnCloseDrawer" style="padding: 4px 8px;">✕</button>
+  </div>
+  <div class="drawer-body" id="savedRoutesList">
+    <div style="color: #5f6368; text-align: center; margin-top: 40px;">Loading saved routes...</div>
+  </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  // ----------------------------------------------------
+  // Application State
+  // ----------------------------------------------------
+  let map;
+  let streetLayer, satelliteLayer;
+  let isSatellite = false;
+
+  // Editor Modes: "none" | "draw_route" | "add_stops"
+  let editorMode = "none";
+  let activeRouteId = null; // Set if editing an existing route
+
+  // Route Data
+  let waypoints = []; // [{ lat, lng, marker }]
+  let roadGeometry = []; // [[lat, lng], ...]
+  let busStops = []; // [{ id, name, lat, lng, sequence, marker }]
+
+  let calculatedDistanceKm = 0;
+  let calculatedDurationMin = 0;
+
+  // Polyline Leaflet Layers
+  let roadPolylineLayer = null;
+  let outlinePolylineLayer = null;
+
+  // Undo / Redo Stacks
+  const historyStack = [];
+  const redoStack = [];
+
+  // DOM Elements
+  const btnToggleDraw = document.getElementById("btnToggleDraw");
+  const drawBtnText = document.getElementById("drawBtnText");
+  const btnToggleStops = document.getElementById("btnToggleStops");
+  const btnUndo = document.getElementById("btnUndo");
+  const btnRedo = document.getElementById("btnRedo");
+  const btnClear = document.getElementById("btnClear");
+  const btnFinish = document.getElementById("btnFinish");
+  const btnOpenSaved = document.getElementById("btnOpenSaved");
+  const savedCountBadge = document.getElementById("savedCountBadge");
+
+  const statDistance = document.getElementById("statDistance");
+  const statDuration = document.getElementById("statDuration");
+  const statWaypoints = document.getElementById("statWaypoints");
+  const statStops = document.getElementById("statStops");
+  const routeHintText = document.getElementById("routeHintText");
+  const startEndText = document.getElementById("startEndText");
+  const displayRouteName = document.getElementById("displayRouteName");
+  const routeModeBadge = document.getElementById("routeModeBadge");
+  const plannerStatus = document.getElementById("plannerStatus");
+
+  const saveModal = document.getElementById("saveModal");
+  const btnCloseModal = document.getElementById("btnCloseModal");
+  const btnCancelSave = document.getElementById("btnCancelSave");
+  const btnConfirmSave = document.getElementById("btnConfirmSave");
+  const routeNameInput = document.getElementById("routeNameInput");
+  const routeDescInput = document.getElementById("routeDescInput");
+  const checkSetActive = document.getElementById("checkSetActive");
+  const modalDistance = document.getElementById("modalDistance");
+  const modalDuration = document.getElementById("modalDuration");
+  const modalStart = document.getElementById("modalStart");
+  const modalDest = document.getElementById("modalDest");
+  const modalStopsCount = document.getElementById("modalStopsCount");
+  const modalStopsList = document.getElementById("modalStopsList");
+
+  const drawerBackdrop = document.getElementById("drawerBackdrop");
+  const savedDrawer = document.getElementById("savedDrawer");
+  const btnCloseDrawer = document.getElementById("btnCloseDrawer");
+  const savedRoutesList = document.getElementById("savedRoutesList");
+
+  const btnSatellite = document.getElementById("btnSatellite");
+  const satText = document.getElementById("satText");
+  const btnFitRoute = document.getElementById("btnFitRoute");
+  const btnZoomIn = document.getElementById("btnZoomIn");
+  const btnZoomOut = document.getElementById("btnZoomOut");
+
+  // ----------------------------------------------------
+  // Leaflet Map Initialization
+  // ----------------------------------------------------
+  function initMap() {
+    streetLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors'
+    });
+
+    satelliteLayer = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      {
+        maxZoom: 19,
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP'
+      }
+    );
+
+    map = L.map("map", {
+      center: [12.9716, 77.5946], // Default center (can be panned anywhere worldwide)
+      zoom: 13,
+      zoomControl: false,
+      layers: [streetLayer]
+    });
+
+    // Map Click Listener
+    map.on("click", onMapClick);
+  }
+
+  // ----------------------------------------------------
+  // History / Undo / Redo System
+  // ----------------------------------------------------
+  function recordHistorySnapshot() {
+    redoStack.length = 0; // Clear redo upon new action
+    const snapshot = {
+      waypoints: waypoints.map(w => ({ lat: w.lat, lng: w.lng })),
+      stops: busStops.map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng, sequence: s.sequence }))
+    };
+    historyStack.push(snapshot);
+    if (historyStack.length > 30) historyStack.shift();
+    updateHistoryButtonStates();
+  }
+
+  function updateHistoryButtonStates() {
+    btnUndo.disabled = historyStack.length === 0;
+    btnRedo.disabled = redoStack.length === 0;
+  }
+
+  function performUndo() {
+    if (historyStack.length === 0) return;
+    const current = {
+      waypoints: waypoints.map(w => ({ lat: w.lat, lng: w.lng })),
+      stops: busStops.map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng, sequence: s.sequence }))
+    };
+    redoStack.push(current);
+
+    const prev = historyStack.pop();
+    restoreStateFromSnapshot(prev);
+    updateHistoryButtonStates();
+  }
+
+  function performRedo() {
+    if (redoStack.length === 0) return;
+    const current = {
+      waypoints: waypoints.map(w => ({ lat: w.lat, lng: w.lng })),
+      stops: busStops.map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng, sequence: s.sequence }))
+    };
+    historyStack.push(current);
+
+    const next = redoStack.pop();
+    restoreStateFromSnapshot(next);
+    updateHistoryButtonStates();
+  }
+
+  function restoreStateFromSnapshot(snapshot) {
+    clearAllMarkers();
+    waypoints = [];
+    busStops = [];
+
+    (snapshot.waypoints || []).forEach(pt => {
+      addWaypointMarker(pt.lat, pt.lng, false);
+    });
+
+    (snapshot.stops || []).forEach(s => {
+      addStopMarker(s.lat, s.lng, s.name, false);
+    });
+
+    recalculateAndDrawRoadRoute();
+  }
+
+  // ----------------------------------------------------
+  // Interactive Drawing and Map Click Handlers
+  // ----------------------------------------------------
+  function onMapClick(e) {
+    if (editorMode === "draw_route") {
+      recordHistorySnapshot();
+      addWaypointMarker(e.latlng.lat, e.latlng.lng, true);
+    } else if (editorMode === "add_stops") {
+      recordHistorySnapshot();
+      addBusStopAt(e.latlng.lat, e.latlng.lng);
+    }
+  }
+
+  function setEditorMode(newMode) {
+    editorMode = newMode;
+    const mapContainer = document.getElementById("map");
+
+    if (editorMode === "draw_route") {
+      mapContainer.className = "drawing-mode";
+      btnToggleDraw.classList.add("active");
+      drawBtnText.textContent = "Finish / Stop Drawing";
+      btnToggleStops.classList.remove("active");
+      routeModeBadge.textContent = "Mode: Drawing Route Points";
+      plannerStatus.textContent = "Click anywhere along roads on the map to add route points";
+      routeHintText.innerHTML = "💡 Click on roads to place waypoints. Drag points to adjust road curves.";
+    } else if (editorMode === "add_stops") {
+      mapContainer.className = "stop-mode";
+      btnToggleStops.classList.add("active");
+      btnToggleDraw.classList.remove("active");
+      drawBtnText.textContent = "Start Drawing Route";
+      routeModeBadge.textContent = "Mode: Adding Bus Stops";
+      plannerStatus.textContent = "Click on or near the route to place designated bus stops";
+      routeHintText.innerHTML = "💡 Click along the route to place a bus stop. Click stop icon to rename.";
+    } else {
+      mapContainer.className = "";
+      btnToggleDraw.classList.remove("active");
+      btnToggleStops.classList.remove("active");
+      drawBtnText.textContent = "Start Drawing Route";
+      routeModeBadge.textContent = "Mode: Viewing / Ready";
+      plannerStatus.textContent = "Visual Road Route Editor";
+      routeHintText.innerHTML = "💡 Click <strong>Start Drawing Route</strong> then click roads to build your route.";
+    }
+  }
+
+  // ----------------------------------------------------
+  // Waypoints Management
+  // ----------------------------------------------------
+  function getWaypointIcon(type, index) {
+    if (type === "start") {
+      return L.divIcon({
+        className: "custom-marker",
+        html: `<div class="waypoint-pin start-pin" title="Starting Point (Origin)">🏁</div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
+      });
+    } else if (type === "dest") {
+      return L.divIcon({
+        className: "custom-marker",
+        html: `<div class="waypoint-pin dest-pin" title="Destination">🎯</div>`,
+        iconSize: [34, 34],
+        iconAnchor: [17, 17]
+      });
+    } else {
+      return L.divIcon({
+        className: "custom-marker",
+        html: `<div class="waypoint-pin" title="Waypoint ${index + 1}">${index + 1}</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+    }
+  }
+
+  function addWaypointMarker(lat, lng, triggerRecalc = true) {
+    const pt = { lat, lng, marker: null };
+    waypoints.push(pt);
+
+    refreshWaypointMarkers();
+
+    if (triggerRecalc) {
+      recalculateAndDrawRoadRoute();
+    }
+  }
+
+  function refreshWaypointMarkers() {
+    waypoints.forEach((pt, index) => {
+      let pinType = "normal";
+      if (index === 0) pinType = "start";
+      else if (index === waypoints.length - 1 && waypoints.length > 1) pinType = "dest";
+
+      const icon = getWaypointIcon(pinType, index);
+
+      if (!pt.marker) {
+        const marker = L.marker([pt.lat, pt.lng], {
+          icon: icon,
+          draggable: true,
+          riseOnHover: true
+        }).addTo(map);
+
+        // Drag Event: Move waypoint and snap road
+        marker.on("dragstart", () => {
+          recordHistorySnapshot();
+        });
+
+        marker.on("dragend", (e) => {
+          const newPos = e.target.getLatLng();
+          pt.lat = newPos.lat;
+          pt.lng = newPos.lng;
+          recalculateAndDrawRoadRoute();
+        });
+
+        // Click popup to delete waypoint
+        marker.bindPopup(() => {
+          const div = document.createElement("div");
+          div.style.padding = "4px";
+          div.innerHTML = `
+            <div style="font-weight: 700; margin-bottom: 6px; font-size: 13px;">
+              ${pinType === "start" ? "🏁 Starting Point" : pinType === "dest" ? "🎯 Destination" : "📍 Waypoint " + (index + 1)}
+            </div>
+            <div style="font-size: 12px; color: #5f6368; margin-bottom: 8px;">
+              ${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}
+            </div>
+            <button id="btnDeleteWp" style="background: #d93025; color: #fff; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">
+              🗑️ Delete Point
+            </button>
+          `;
+          setTimeout(() => {
+            const btn = document.getElementById("btnDeleteWp");
+            if (btn) {
+              btn.onclick = () => {
+                deleteWaypoint(index);
+                map.closePopup();
+              };
+            }
+          }, 50);
+          return div;
+        });
+
+        pt.marker = marker;
+      } else {
+        pt.marker.setIcon(icon);
+      }
+    });
+  }
+
+  function deleteWaypoint(index) {
+    recordHistorySnapshot();
+    if (waypoints[index] && waypoints[index].marker) {
+      map.removeLayer(waypoints[index].marker);
+    }
+    waypoints.splice(index, 1);
+    refreshWaypointMarkers();
+    recalculateAndDrawRoadRoute();
+  }
+
+  // ----------------------------------------------------
+  // Bus Stops Management
+  // ----------------------------------------------------
+  function getStopIcon(sequence) {
+    return L.divIcon({
+      className: "custom-marker",
+      html: `<div class="stop-pin" title="Bus Stop ${sequence}">🚏</div>`,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16]
+    });
+  }
+
+  function addBusStopAt(lat, lng) {
+    const seq = busStops.length + 1;
+    const stopName = `Bus Stop ${seq}`;
+    addStopMarker(lat, lng, stopName, true);
+  }
+
+  function addStopMarker(lat, lng, stopName, updateUI = true) {
+    const seq = busStops.length + 1;
+    const stopId = "stop_" + Date.now() + "_" + seq;
+
+    const stopObj = {
+      id: stopId,
+      name: stopName,
+      lat,
+      lng,
+      sequence: seq,
+      marker: null
+    };
+
+    const marker = L.marker([lat, lng], {
+      icon: getStopIcon(seq),
+      draggable: true,
+      riseOnHover: true
+    }).addTo(map);
+
+    marker.on("dragstart", () => recordHistorySnapshot());
+    marker.on("dragend", (e) => {
+      const pos = e.target.getLatLng();
+      stopObj.lat = pos.lat;
+      stopObj.lng = pos.lng;
+    });
+
+    marker.bindPopup(() => {
+      const container = document.createElement("div");
+      container.style.padding = "4px";
+      container.innerHTML = `
+        <div style="font-weight: 700; margin-bottom: 6px; font-size: 13px;">🚏 Bus Stop #${stopObj.sequence}</div>
+        <input type="text" id="inputStopName" value="${stopObj.name}" style="padding: 4px 8px; border: 1px solid #dadce0; border-radius: 4px; font-size: 13px; width: 160px; margin-bottom: 8px;">
+        <div style="display: flex; gap: 6px;">
+          <button id="btnSaveStopName" style="background: #188038; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">Save Name</button>
+          <button id="btnDeleteStop" style="background: #d93025; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 600;">Delete Stop</button>
+        </div>
+      `;
+      setTimeout(() => {
+        const input = document.getElementById("inputStopName");
+        const saveBtn = document.getElementById("btnSaveStopName");
+        const delBtn = document.getElementById("btnDeleteStop");
+
+        if (saveBtn) {
+          saveBtn.onclick = () => {
+            if (input && input.value.trim()) {
+              stopObj.name = input.value.trim();
+              map.closePopup();
+            }
+          };
+        }
+        if (delBtn) {
+          delBtn.onclick = () => {
+            deleteBusStop(stopObj.id);
+            map.closePopup();
+          };
+        }
+      }, 50);
+      return container;
+    });
+
+    stopObj.marker = marker;
+    busStops.push(stopObj);
+
+    if (updateUI) updateStatsDisplay();
+  }
+
+  function deleteBusStop(id) {
+    recordHistorySnapshot();
+    const idx = busStops.findIndex(s => s.id === id);
+    if (idx !== -1) {
+      if (busStops[idx].marker) {
+        map.removeLayer(busStops[idx].marker);
+      }
+      busStops.splice(idx, 1);
+      // Re-sequence remaining stops
+      busStops.forEach((s, i) => {
+        s.sequence = i + 1;
+        s.marker.setIcon(getStopIcon(s.sequence));
+      });
+      updateStatsDisplay();
+    }
+  }
+
+  // ----------------------------------------------------
+  // Road Snapping & Route Calculation via OSRM Engine
+  // ----------------------------------------------------
+  async function recalculateAndDrawRoadRoute() {
+    if (waypoints.length < 2) {
+      // Clear route line if fewer than 2 points
+      if (roadPolylineLayer) {
+        map.removeLayer(roadPolylineLayer);
+        roadPolylineLayer = null;
+      }
+      if (outlinePolylineLayer) {
+        map.removeLayer(outlinePolylineLayer);
+        outlinePolylineLayer = null;
+      }
+      roadGeometry = [];
+      calculatedDistanceKm = 0;
+      calculatedDurationMin = 0;
+      updateStatsDisplay();
+      return;
+    }
+
+    plannerStatus.textContent = "Snapping route along road curves via OSRM...";
+
+    try {
+      // Send waypoints to backend router calculation API
+      const res = await fetch("/api/routes/calculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          waypoints: waypoints.map(w => [w.lat, w.lng])
+        })
+      });
+
+      if (!res.ok) throw new Error("Server router calculation error");
+      const data = await res.json();
+
+      roadGeometry = data.geometry || [];
+      calculatedDistanceKm = data.distanceKm || 0;
+      calculatedDurationMin = data.durationMin || 0;
+
+      drawRoadPolylineOnMap(roadGeometry);
+      plannerStatus.textContent = data.isRoadSnapped ? "Road route successfully calculated" : "Route connected (Direct fallback)";
+    } catch (err) {
+      console.warn("OSRM backend route calculation failed, using direct lines:", err);
+      // Client-side fallback to direct lines
+      roadGeometry = waypoints.map(w => [w.lat, w.lng]);
+      drawRoadPolylineOnMap(roadGeometry);
+      plannerStatus.textContent = "Route connected (Direct lines)";
+    }
+
+    updateStatsDisplay();
+  }
+
+  function drawRoadPolylineOnMap(coords) {
+    if (!coords || coords.length === 0) return;
+
+    // Draw casing outline for sleek transit aesthetic
+    if (!outlinePolylineLayer) {
+      outlinePolylineLayer = L.polyline(coords, {
+        color: "#174ea6",
+        weight: 7,
+        opacity: 0.9,
+        lineCap: "round",
+        lineJoin: "round"
+      }).addTo(map);
+    } else {
+      outlinePolylineLayer.setLatLngs(coords);
+    }
+
+    // Inner bright polyline
+    if (!roadPolylineLayer) {
+      roadPolylineLayer = L.polyline(coords, {
+        color: "#4285f4",
+        weight: 5,
+        opacity: 1,
+        lineCap: "round",
+        lineJoin: "round"
+      }).addTo(map);
+
+      // Clicking on the route polyline allows inserting an intermediate waypoint to bend the route!
+      roadPolylineLayer.on("click", (e) => {
+        if (editorMode === "draw_route") {
+          recordHistorySnapshot();
+          insertWaypointAlongPolyline(e.latlng.lat, e.latlng.lng);
+        }
+      });
+    } else {
+      roadPolylineLayer.setLatLngs(coords);
+    }
+  }
+
+  // Insert a waypoint along the route segment to curve the route
+  function insertWaypointAlongPolyline(lat, lng) {
+    // Find nearest waypoint pair
+    let bestIndex = 1;
+    let minDist = Infinity;
+
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const p1 = waypoints[i];
+      const p2 = waypoints[i + 1];
+      const dist = Math.hypot(p1.lat - lat, p1.lng - lng) + Math.hypot(p2.lat - lat, p2.lng - lng);
+      if (dist < minDist) {
+        minDist = dist;
+        bestIndex = i + 1;
+      }
+    }
+
+    waypoints.splice(bestIndex, 0, { lat, lng, marker: null });
+    refreshWaypointMarkers();
+    recalculateAndDrawRoadRoute();
+  }
+
+  function updateStatsDisplay() {
+    statDistance.textContent = `${calculatedDistanceKm.toFixed(1)} km`;
+    statDuration.textContent = `${calculatedDurationMin} min`;
+    statWaypoints.textContent = waypoints.length;
+    statStops.textContent = busStops.length;
+
+    btnFinish.disabled = waypoints.length < 2;
+
+    if (waypoints.length >= 2) {
+      startEndText.textContent = `Start: (${waypoints[0].lat.toFixed(3)}, ${waypoints[0].lng.toFixed(3)}) → Dest: (${waypoints[waypoints.length - 1].lat.toFixed(3)}, ${waypoints[waypoints.length - 1].lng.toFixed(3)})`;
+    } else if (waypoints.length === 1) {
+      startEndText.textContent = `Start: (${waypoints[0].lat.toFixed(3)}, ${waypoints[0].lng.toFixed(3)}) | Click destination`;
+    } else {
+      startEndText.textContent = "Start: -- | Dest: --";
+    }
+  }
+
+  function clearAllMarkers() {
+    waypoints.forEach(w => {
+      if (w.marker) map.removeLayer(w.marker);
+    });
+    busStops.forEach(s => {
+      if (s.marker) map.removeLayer(s.marker);
+    });
+    if (roadPolylineLayer) {
+      map.removeLayer(roadPolylineLayer);
+      roadPolylineLayer = null;
+    }
+    if (outlinePolylineLayer) {
+      map.removeLayer(outlinePolylineLayer);
+      outlinePolylineLayer = null;
+    }
+  }
+
+  // ----------------------------------------------------
+  // Finish & Save Modal
+  // ----------------------------------------------------
+  function openFinishSaveModal() {
+    if (waypoints.length < 2) return;
+
+    modalDistance.textContent = `${calculatedDistanceKm.toFixed(2)} km`;
+    modalDuration.textContent = `${calculatedDurationMin} minutes`;
+    modalStart.textContent = `Origin (${waypoints[0].lat.toFixed(4)}, ${waypoints[0].lng.toFixed(4)})`;
+    modalDest.textContent = `Destination (${waypoints[waypoints.length - 1].lat.toFixed(4)}, ${waypoints[waypoints.length - 1].lng.toFixed(4)})`;
+
+    modalStopsCount.textContent = busStops.length;
+    modalStopsList.innerHTML = "";
+
+    if (busStops.length === 0) {
+      modalStopsList.innerHTML = `<div style="color: #5f6368; font-size: 13px;">No intermediate bus stops marked. Route will run express between start and destination.</div>`;
+    } else {
+      busStops.forEach(s => {
+        const item = document.createElement("div");
+        item.className = "stop-preview-item";
+        item.innerHTML = `
+          <span>🚏 <strong>Stop #${s.sequence}:</strong> ${s.name}</span>
+          <span style="font-family: monospace; color: #5f6368; font-size: 12px;">${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}</span>
+        `;
+        modalStopsList.appendChild(item);
+      });
+    }
+
+    saveModal.style.display = "flex";
+  }
+
+  async function saveRouteToBackend() {
+    const name = routeNameInput.value.trim() || "Express Bus Route";
+    const description = routeDescInput.value.trim();
+    const isActive = checkSetActive.checked;
+
+    btnConfirmSave.disabled = true;
+    btnConfirmSave.textContent = "Saving...";
+
+    const payload = {
+      name,
+      description,
+      distanceKm: calculatedDistanceKm,
+      durationMin: calculatedDurationMin,
+      startName: `Origin (${waypoints[0].lat.toFixed(4)}, ${waypoints[0].lng.toFixed(4)})`,
+      destinationName: `Destination (${waypoints[waypoints.length - 1].lat.toFixed(4)}, ${waypoints[waypoints.length - 1].lng.toFixed(4)})`,
+      waypoints: waypoints.map(w => ({ lat: w.lat, lng: w.lng })),
+      geometry: roadGeometry,
+      stops: busStops.map(s => ({
+        id: s.id,
+        name: s.name,
+        lat: s.lat,
+        lng: s.lng,
+        sequence: s.sequence
+      })),
+      isActive
+    };
+
+    try {
+      let res;
+      if (activeRouteId) {
+        // Update existing route
+        res = await fetch(`/api/routes/${activeRouteId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } else {
+        // Create new route
+        res = await fetch("/api/routes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      if (!res.ok) throw new Error("Failed to save route to database");
+      const saved = await res.json();
+
+      activeRouteId = saved.id;
+      displayRouteName.textContent = saved.name;
+      saveModal.style.display = "none";
+      alert("✅ Route saved successfully to database!");
+
+      setEditorMode("none");
+      loadSavedRoutesCount();
+    } catch (err) {
+      alert("⚠️ Error saving route: " + err.message);
+    } finally {
+      btnConfirmSave.disabled = false;
+      btnConfirmSave.textContent = "Save Route to Database";
+    }
+  }
+
+  // ----------------------------------------------------
+  // Saved Routes Drawer & Management
+  // ----------------------------------------------------
+  async function loadSavedRoutesCount() {
+    try {
+      const res = await fetch("/api/routes");
+      const routes = await res.json();
+      savedCountBadge.textContent = routes.length;
+    } catch (e) {}
+  }
+
+  async function openSavedRoutesDrawer() {
+    drawerBackdrop.style.display = "block";
+    savedDrawer.classList.add("open");
+    savedRoutesList.innerHTML = `<div style="text-align: center; color: #5f6368; padding: 20px;">Loading routes from database...</div>`;
+
+    try {
+      const res = await fetch("/api/routes");
+      const routes = await res.json();
+
+      if (routes.length === 0) {
+        savedRoutesList.innerHTML = `
+          <div style="text-align: center; color: #5f6368; padding: 40px 10px;">
+            <div style="font-size: 32px; margin-bottom: 8px;">🛣️</div>
+            <div style="font-weight: 700; margin-bottom: 4px;">No Saved Routes Yet</div>
+            <div style="font-size: 13px;">Use the "Start Drawing Route" button to create your first route along roads!</div>
+          </div>
+        `;
+        return;
+      }
+
+      savedRoutesList.innerHTML = "";
+      routes.forEach(r => {
+        const item = document.createElement("div");
+        item.className = "route-card-item" + (r.isActive ? " active-route" : "");
+        item.innerHTML = `
+          <div class="route-card-title">
+            <span>${r.name}</span>
+            ${r.isActive ? '<span style="font-size: 11px; background: #188038; color: #fff; padding: 2px 8px; border-radius: 12px; font-weight: 700;">ACTIVE</span>' : ''}
+          </div>
+          ${r.description ? `<div style="font-size: 12px; color: #5f6368;">${r.description}</div>` : ''}
+          <div class="route-meta">
+            <span>📏 ${Number(r.distanceKm || 0).toFixed(1)} km</span>
+            <span>⏱️ ${r.durationMin || 0} min</span>
+            <span>🚏 ${(r.stops || []).length} stops</span>
+          </div>
+          <div class="route-actions-row">
+            <button class="btn-small btn-primary" onclick="loadRouteForEditing('${r.id}')">✏️ Edit Route</button>
+            <button class="btn-small btn-success" onclick="activateRoute('${r.id}')">🚀 Set Active</button>
+            <button class="btn-small btn-danger" onclick="deleteRoute('${r.id}')">🗑️ Delete</button>
+          </div>
+        `;
+        savedRoutesList.appendChild(item);
+      });
+    } catch (err) {
+      savedRoutesList.innerHTML = `<div style="color: #d93025; text-align: center;">Error loading routes: ${err.message}</div>`;
+    }
+  }
+
+  function closeSavedRoutesDrawer() {
+    drawerBackdrop.style.display = "none";
+    savedDrawer.classList.remove("open");
+  }
+
+  // Load an existing route into the interactive editor for modification
+  window.loadRouteForEditing = async function(id) {
+    try {
+      const res = await fetch(`/api/routes/${id}`);
+      if (!res.ok) throw new Error("Could not fetch route");
+      const route = await res.json();
+
+      recordHistorySnapshot();
+      clearAllMarkers();
+
+      activeRouteId = route.id;
+      displayRouteName.textContent = route.name;
+      routeNameInput.value = route.name;
+      routeDescInput.value = route.description || "";
+      checkSetActive.checked = Boolean(route.isActive);
+
+      waypoints = [];
+      busStops = [];
+
+      (route.waypoints || []).forEach(pt => {
+        addWaypointMarker(pt.lat, pt.lng, false);
+      });
+
+      (route.stops || []).forEach(s => {
+        addStopMarker(s.lat, s.lng, s.name, false);
+      });
+
+      if (route.geometry && route.geometry.length > 0) {
+        roadGeometry = route.geometry;
+        calculatedDistanceKm = route.distanceKm || 0;
+        calculatedDurationMin = route.durationMin || 0;
+        drawRoadPolylineOnMap(roadGeometry);
+        updateStatsDisplay();
+      } else {
+        recalculateAndDrawRoadRoute();
+      }
+
+      closeSavedRoutesDrawer();
+      fitRouteOnMap();
+      setEditorMode("draw_route");
+      alert(`✅ Loaded "${route.name}" into editor! You can drag points, add new ones, or mark stops.`);
+    } catch (err) {
+      alert("⚠️ Could not load route: " + err.message);
+    }
+  };
+
+  window.activateRoute = async function(id) {
+    try {
+      const res = await fetch(`/api/routes/${id}/activate`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to activate route");
+      alert("🚀 Route set as active! Passenger and conductor maps will now display this scheduled corridor.");
+      openSavedRoutesDrawer();
+    } catch (err) {
+      alert("⚠️ Error: " + err.message);
+    }
+  };
+
+  window.deleteRoute = async function(id) {
+    if (!confirm("Are you sure you want to delete this route?")) return;
+    try {
+      const res = await fetch(`/api/routes/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete route");
+      if (activeRouteId === id) {
+        activeRouteId = null;
+        displayRouteName.textContent = "Unsaved Route";
+      }
+      loadSavedRoutesCount();
+      openSavedRoutesDrawer();
+    } catch (err) {
+      alert("⚠️ Error deleting route: " + err.message);
+    }
+  };
+
+  function fitRouteOnMap() {
+    if (roadPolylineLayer) {
+      map.fitBounds(roadPolylineLayer.getBounds(), { padding: [50, 50] });
+    } else if (waypoints.length > 0) {
+      const group = L.featureGroup(waypoints.map(w => w.marker).filter(Boolean));
+      map.fitBounds(group.getBounds(), { padding: [50, 50] });
+    }
+  }
+
+  // ----------------------------------------------------
+  // Event Listeners
+  // ----------------------------------------------------
+  btnToggleDraw.addEventListener("click", () => {
+    if (editorMode === "draw_route") {
+      setEditorMode("none");
+    } else {
+      setEditorMode("draw_route");
+    }
+  });
+
+  btnToggleStops.addEventListener("click", () => {
+    if (editorMode === "add_stops") {
+      setEditorMode("none");
+    } else {
+      setEditorMode("add_stops");
+    }
+  });
+
+  btnUndo.addEventListener("click", performUndo);
+  btnRedo.addEventListener("click", performRedo);
+
+  // Keyboard Shortcuts: Ctrl+Z (Undo), Ctrl+Y (Redo)
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      if (e.shiftKey) performRedo();
+      else performUndo();
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
+      performRedo();
+    }
+  });
+
+  btnClear.addEventListener("click", () => {
+    if (waypoints.length === 0 && busStops.length === 0) return;
+    if (confirm("Clear all points, road routes, and bus stops on the canvas?")) {
+      recordHistorySnapshot();
+      clearAllMarkers();
+      waypoints = [];
+      busStops = [];
+      roadGeometry = [];
+      calculatedDistanceKm = 0;
+      calculatedDurationMin = 0;
+      activeRouteId = null;
+      displayRouteName.textContent = "Unsaved Route";
+      updateStatsDisplay();
+      setEditorMode("none");
+    }
+  });
+
+  btnFinish.addEventListener("click", openFinishSaveModal);
+  btnCloseModal.addEventListener("click", () => saveModal.style.display = "none");
+  btnCancelSave.addEventListener("click", () => saveModal.style.display = "none");
+  btnConfirmSave.addEventListener("click", saveRouteToBackend);
+
+  btnOpenSaved.addEventListener("click", openSavedRoutesDrawer);
+  btnCloseDrawer.addEventListener("click", closeSavedRoutesDrawer);
+  drawerBackdrop.addEventListener("click", closeSavedRoutesDrawer);
+
+  btnFitRoute.addEventListener("click", fitRouteOnMap);
+
+  btnSatellite.addEventListener("click", () => {
+    if (isSatellite) {
+      map.removeLayer(satelliteLayer);
+      map.addLayer(streetLayer);
+      isSatellite = false;
+      btnSatellite.classList.remove("active");
+      satText.textContent = "Satellite View";
+    } else {
+      map.removeLayer(streetLayer);
+      map.addLayer(satelliteLayer);
+      isSatellite = true;
+      btnSatellite.classList.add("active");
+      satText.textContent = "Street View";
+    }
+  });
+
+  btnZoomIn.addEventListener("click", () => map.zoomIn());
+  btnZoomOut.addEventListener("click", () => map.zoomOut());
+
+  // Initialization
+  initMap();
+  loadSavedRoutesCount();
+</script>
+
+</body>
+</html>
+
