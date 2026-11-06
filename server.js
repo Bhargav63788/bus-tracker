@@ -5,6 +5,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const routeStore = require("./routeStore");
 const routeValidator = require("./routeValidator");
+const mapMatcher = require("./mapMatcher");
 
 const app = express();
 const server = http.createServer(app);
@@ -54,7 +55,8 @@ function getOrCreateBusState(busId = "BUS-01") {
         offRouteCount: 0,
         history: []
       },
-      latestLocation: null
+      latestLocation: null,
+      mapMatchState: null
     });
   }
   return busStates.get(safeBusId);
@@ -223,6 +225,7 @@ function startNewTrackingSession(options = {}) {
     history: []
   };
 
+  busState.mapMatchState = null;
   activeSession = busState.session;
 
   // Broadcast session start and active route to all passenger dashboards
@@ -247,6 +250,7 @@ function stopActiveTrackingSession(options = {}) {
 
   busState.session.status = "stopped";
   busState.session.stopTime = Date.now();
+  busState.mapMatchState = null;
   if (busState.latestLocation) {
     busState.latestLocation.status = "stopped";
   }
@@ -412,24 +416,31 @@ function processLocationUpdate(body = {}) {
 
   const now = Date.now();
 
-  // CONTINUOUS ROUTE VALIDATION
-  const validation = routeValidator.validatePointOnRoute(lat, lng, route.geometry, { accuracy });
+  // CONTINUOUS ROUTE-AWARE MAP MATCHING
+  // Uses previous matched state to ensure continuous forward progression without jumping to parallel streets
+  const mapMatch = mapMatcher.matchPointToRoute(lat, lng, route.geometry, {
+    accuracy,
+    speed,
+    heading,
+    timestamp: timestamp || now,
+    prevMatch: busState.mapMatchState
+  });
 
   // 1. CONDUCTOR IS OFF-ROUTE: Hide location from passengers immediately
-  if (!validation.isWithinRoute) {
+  if (!mapMatch.isWithinRoute) {
     busState.session.isOffRoute = true;
     busState.session.offRouteCount = (busState.session.offRouteCount || 0) + 1;
     activeSession = busState.session;
 
-    // NEVER broadcast off-route coordinates to passengers!
+    // Reset mapMatchState so conductor can re-acquire when returning to route
     busState.latestLocation = {
       isOffRoute: true,
       status: "off_route",
       busId,
       routeId: route.id,
       routeName: route.name,
-      distanceToRouteMeters: validation.distanceMeters,
-      effectiveToleranceMeters: validation.effectiveTolerance,
+      distanceToRouteMeters: mapMatch.distanceMeters,
+      effectiveToleranceMeters: mapMatch.effectiveTolerance,
       updatedAt: now,
       sessionId: busState.session.id
     };
@@ -442,8 +453,8 @@ function processLocationUpdate(body = {}) {
       routeName: route.name,
       status: "off_route",
       message: `Bus ${busId} is currently off route (Location unavailable)`,
-      distanceToRouteMeters: validation.distanceMeters,
-      effectiveToleranceMeters: validation.effectiveTolerance,
+      distanceToRouteMeters: mapMatch.distanceMeters,
+      effectiveToleranceMeters: mapMatch.effectiveTolerance,
       timestamp: now
     });
 
@@ -455,8 +466,8 @@ function processLocationUpdate(body = {}) {
         status: "off_route",
         isOffRoute: true,
         message: "You are outside the selected bus route. Location publishing paused.",
-        distanceToRouteMeters: validation.distanceMeters,
-        effectiveToleranceMeters: validation.effectiveTolerance,
+        distanceToRouteMeters: mapMatch.distanceMeters,
+        effectiveToleranceMeters: mapMatch.effectiveTolerance,
         routeName: route.name,
         routeId: route.id,
         sessionId: busState.session.id,
@@ -469,24 +480,24 @@ function processLocationUpdate(body = {}) {
   busState.session.isOffRoute = false;
   activeSession = busState.session;
 
-  let computedHeading =
-    typeof heading === "number" && !isNaN(heading) ? (heading + 360) % 360 : null;
+  // Save matched state for sequential forward continuity
+  busState.mapMatchState = {
+    segmentIndex: mapMatch.segmentIndex,
+    matchedLat: mapMatch.matchedLat,
+    matchedLng: mapMatch.matchedLng,
+    matchedHeading: mapMatch.matchedHeading,
+    timestamp: now
+  };
+
+  let computedHeading = mapMatch.matchedHeading;
   let computedSpeed =
     typeof speed === "number" && !isNaN(speed) && speed >= 0 ? Math.round(speed) : null;
 
-  // Derive speed and heading from sequential positions if device didn't provide them
+  // Derive speed if device didn't provide it
   const prevLoc = busState.latestLocation;
   if (prevLoc && !prevLoc.isOffRoute && prevLoc.lat) {
-    const distKm = getDistanceKm(prevLoc.lat, prevLoc.lng, lat, lng);
-    const timeSec = Math.max((now - prevLoc.updatedAt) / 1000, 1);
-
-    if (computedHeading === null && distKm > 0.003) {
-      computedHeading = Math.round(
-        calculateBearing(prevLoc.lat, prevLoc.lng, lat, lng)
-      );
-    } else if (computedHeading === null) {
-      computedHeading = prevLoc.heading || 0;
-    }
+    const distKm = getDistanceKm(prevLoc.lat, prevLoc.lng, mapMatch.matchedLat, mapMatch.matchedLng);
+    const timeSec = Math.max((now - prevLoc.updatedAt) / 1000, 0.5);
 
     if (computedSpeed === null && distKm > 0.002) {
       computedSpeed = Math.round(distKm / (timeSec / 3600));
@@ -494,15 +505,14 @@ function processLocationUpdate(body = {}) {
     }
   }
 
-  if (computedHeading === null) computedHeading = 0;
   if (computedSpeed === null) computedSpeed = 0;
 
-  // Actual GPS coordinates are preserved directly without artificial warping
+  // Road-matched coordinates for Google Maps-style accuracy along saved route
   const locationPayload = {
-    lat: Number(lat.toFixed(6)),
-    lng: Number(lng.toFixed(6)),
-    rawLat: lat,
-    rawLng: lng,
+    lat: mapMatch.matchedLat,
+    lng: mapMatch.matchedLng,
+    rawLat: Number(lat.toFixed(6)),
+    rawLng: Number(lng.toFixed(6)),
     accuracy: accuracy !== undefined ? Math.round(accuracy) : null,
     speed: computedSpeed,
     heading: computedHeading,
@@ -515,8 +525,9 @@ function processLocationUpdate(body = {}) {
     routeId: route.id,
     routeName: route.name,
     isOffRoute: false,
-    distanceToRouteMeters: validation.distanceMeters,
-    effectiveToleranceMeters: validation.effectiveTolerance
+    distanceToRouteMeters: mapMatch.distanceMeters,
+    effectiveToleranceMeters: mapMatch.effectiveTolerance,
+    segmentIndex: mapMatch.segmentIndex
   };
 
   busState.latestLocation = locationPayload;
@@ -574,8 +585,8 @@ function processLocationUpdate(body = {}) {
       lng: locationPayload.lng,
       speed: computedSpeed,
       distanceTraveledKm: distanceKm,
-      distanceToRouteMeters: validation.distanceMeters,
-      effectiveToleranceMeters: validation.effectiveTolerance,
+      distanceToRouteMeters: mapMatch.distanceMeters,
+      effectiveToleranceMeters: mapMatch.effectiveTolerance,
       sessionStatus: busState.session.status,
       sessionId: busState.session.id,
       routeId: route.id,

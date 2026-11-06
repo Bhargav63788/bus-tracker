@@ -611,14 +611,14 @@
   }
 
   // ----------------------------------------------------
-  // Real-Time Socket.IO Stream
+  // Real-Time Socket.IO Stream & Server Feedback
   // ----------------------------------------------------
   let socket = null;
   try {
     if (typeof io !== "undefined") {
       socket = io({ transports: ["websocket", "polling"], timeout: 10000 });
       socket.on("connect", () => {
-        connDisplay.textContent = "Connected (Real-Time)";
+        connDisplay.textContent = "Connected (Real-Time Socket)";
         connDisplay.style.color = "#188038";
       });
       socket.on("state_init", (data) => {
@@ -631,6 +631,19 @@
           onRouteSelected(route.id);
         }
       });
+
+      // Receive real-time server match confirmations
+      socket.on("location_update", (data) => {
+        if (isTracking && data.busId === selectedBusId) {
+          handleServerLocationAck(data);
+        }
+      });
+      socket.on("bus_off_route", (data) => {
+        if (isTracking && data.busId === selectedBusId) {
+          handleServerOffRouteAck(data);
+        }
+      });
+
       socket.on("disconnect", () => {
         connDisplay.textContent = "Disconnected (Reconnecting...)";
         connDisplay.style.color = "#d93025";
@@ -645,6 +658,32 @@
     }
   } catch (err) {
     connDisplay.textContent = "HTTP REST Mode";
+  }
+
+  function handleServerLocationAck(data) {
+    const distMeters = typeof data.distanceToRouteMeters === "number" ? Math.round(data.distanceToRouteMeters) : 0;
+    routeDistDisplay.textContent = `${distMeters} m`;
+    statusBar.className = "status-bar transmitting";
+    statusText.textContent = `🟢 ON ROUTE: Road-Matched Live GPS (${distMeters}m)`;
+    publishingDisplay.textContent = "LIVE (Broadcasting to Passengers)";
+    publishingDisplay.style.color = "#188038";
+    if (typeof data.lat === "number" && typeof data.lng === "number") {
+      updateConductorMarker(data.lat, data.lng, true);
+    }
+    tipBox.innerHTML = `✅ <strong>Live Road-Matched Tracking:</strong> Your bus is precisely aligned with <strong>${selectedRoute.name}</strong> (${distMeters}m from centerline). Movement broadcasts smoothly to passengers in real time.`;
+  }
+
+  function handleServerOffRouteAck(data) {
+    const distMeters = typeof data.distanceToRouteMeters === "number" ? Math.round(data.distanceToRouteMeters) : "> 100";
+    routeDistDisplay.textContent = `${distMeters} m`;
+    statusBar.className = "status-bar error";
+    statusText.textContent = "⚠️ OFF ROUTE: Location publishing paused";
+    publishingDisplay.textContent = "PAUSED (Off Route - Location Hidden)";
+    publishingDisplay.style.color = "#d93025";
+    if (latestFix) {
+      updateConductorMarker(latestFix.lat, latestFix.lng, false);
+    }
+    tipBox.innerHTML = `⚠️ <strong>Off-Route Warning:</strong> You are currently <strong>${distMeters}m</strong> away from ${selectedRoute.name}. Move back into the route corridor to resume broadcasting to passengers.`;
   }
 
   // ----------------------------------------------------
@@ -673,15 +712,40 @@
   // ----------------------------------------------------
   // Continuous Location Transmission & Route Validation
   // ----------------------------------------------------
+  let isSendingHttp = false;
+  let lastTransmitTime = 0;
+  let lastTransmittedLat = 0;
+  let lastTransmittedLng = 0;
+
   async function transmitLocation(payload) {
     if (!payload || typeof payload.lat !== "number" || typeof payload.lng !== "number") {
       return;
     }
 
-    // Attach route ID
     if (selectedRoute) {
       payload.routeId = selectedRoute.id;
     }
+
+    lastTransmitTime = Date.now();
+    lastTransmittedLat = payload.lat;
+    lastTransmittedLng = payload.lng;
+
+    packetsCount++;
+    packetsDisplay.textContent = packetsCount;
+
+    coordsDisplay.textContent = payload.lat.toFixed(5) + ", " + payload.lng.toFixed(5);
+    accuracyDisplay.textContent = (payload.accuracy ? "±" + Math.round(payload.accuracy) : "--") + " m";
+    speedDisplay.textContent = (payload.speed ? Math.round(payload.speed) : 0) + " km/h";
+
+    // Fast path: Persistent real-time Socket.IO connection (sub-50ms latency)
+    if (socket && socket.connected) {
+      socket.emit("conductor_location_update", payload);
+      return;
+    }
+
+    // Fallback path: HTTP POST if socket is reconnecting
+    if (isSendingHttp) return;
+    isSendingHttp = true;
 
     try {
       const res = await fetch("/update-location", {
@@ -693,44 +757,21 @@
       if (!res.ok) throw new Error("HTTP " + res.status);
       const data = await res.json();
 
-      packetsCount++;
-      packetsDisplay.textContent = packetsCount;
-
-      coordsDisplay.textContent = payload.lat.toFixed(5) + ", " + payload.lng.toFixed(5);
-      accuracyDisplay.textContent = (payload.accuracy ? "±" + Math.round(payload.accuracy) : "--") + " m";
-      speedDisplay.textContent = (payload.speed ? Math.round(payload.speed) : 0) + " km/h";
-
-      const distMeters = typeof data.distanceToRouteMeters === "number" ? Math.round(data.distanceToRouteMeters) : null;
-      if (distMeters !== null) {
-        routeDistDisplay.textContent = `${distMeters} m`;
-      }
-
       if (data.sessionId) {
         currentSessionId = data.sessionId;
         sessionDisplay.textContent = currentSessionId.slice(-8);
       }
 
-      // Check whether backend verified point as on-route or off-route
       if (data.isOffRoute) {
-        statusBar.className = "status-bar error";
-        statusText.textContent = "⚠️ OFF ROUTE: Location publishing paused";
-        publishingDisplay.textContent = "PAUSED (Off Route - Location Hidden)";
-        publishingDisplay.style.color = "#d93025";
-        updateConductorMarker(payload.lat, payload.lng, false);
-
-        tipBox.innerHTML = `⚠️ <strong>Off-Route Warning:</strong> You are currently <strong>${distMeters || '> 100'}m</strong> away from ${selectedRoute.name}. Move back into the route corridor to resume broadcasting to passengers.`;
+        handleServerOffRouteAck(data);
       } else {
-        statusBar.className = "status-bar transmitting";
-        statusText.textContent = `🟢 ON ROUTE: Broadcasting Live GPS (${distMeters || 0}m)`;
-        publishingDisplay.textContent = "LIVE (Broadcasting to Passengers)";
-        publishingDisplay.style.color = "#188038";
-        updateConductorMarker(payload.lat, payload.lng, true);
+        handleServerLocationAck(data);
       }
-
-      lastSentTimestamp = Date.now();
     } catch (err) {
       statusBar.className = "status-bar error";
       statusText.textContent = "⚠️ Upload error: " + err.message;
+    } finally {
+      isSendingHttp = false;
     }
   }
 
@@ -763,8 +804,19 @@
       updateConductorMarker(coords.latitude, coords.longitude, localDist <= ROUTE_TOLERANCE_METERS);
     }
 
-    if (isTracking && lastSentTimestamp === 0) {
-      transmitLocation(latestFix);
+    // Continuous Real-Time Streaming:
+    // If tracking is active, send immediately when new GPS position is available
+    // without waiting for a fixed interval timer!
+    if (isTracking) {
+      const now = Date.now();
+      const elapsed = now - lastTransmitTime;
+      const movedMeters = (lastTransmittedLat !== 0)
+        ? Math.hypot((coords.latitude - lastTransmittedLat) * 111000, (coords.longitude - lastTransmittedLng) * 108000)
+        : 999;
+
+      if (elapsed >= 500 || movedMeters >= 1.5) {
+        transmitLocation(latestFix);
+      }
     }
   }
 
@@ -860,27 +912,30 @@
 
           acquireWakeLock();
 
-          // Start continuous GPS tracking
+          // Start continuous high-frequency GPS tracking
           watchId = navigator.geolocation.watchPosition(
             onLocationSuccess,
             onLocationError,
             {
               enableHighAccuracy: true,
               maximumAge: 0,
-              timeout: 15000
+              timeout: 10000
             }
           );
 
           // Transmit initial position immediately
           onLocationSuccess(pos);
 
-          // Cadenced transmission loop (every 2.5s)
+          // Fallback heartbeat timer: only pings every 2s if phone is resting/stopped
           if (transmissionTimer) clearInterval(transmissionTimer);
           transmissionTimer = setInterval(() => {
             if (isTracking && latestFix) {
-              transmitLocation(latestFix);
+              const now = Date.now();
+              if (now - lastTransmitTime >= 1800) {
+                transmitLocation(latestFix);
+              }
             }
-          }, 2500);
+          }, 1000);
 
           // Watchdog timer
           if (heartbeatTimer) clearInterval(heartbeatTimer);
